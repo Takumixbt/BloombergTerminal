@@ -1,0 +1,5 @@
+{"leaderboardRows":[
+ {"ethAddress":"0x31ca8395cf837de08b24da3f660e77761dfb974b","accountValue":"3500000.0","windowPerformances":[["day",{"pnl":"12000.0","roi":"0.0035","vlm":"5000000.0"}],["week",{"pnl":"-40000.0","roi":"-0.011","vlm":"30000000.0"}],["month",{"pnl":"210000.0","roi":"0.064","vlm":"120000000.0"}],["allTime",{"pnl":"2500000.0","roi":"2.5","vlm":"900000000.0"}]],"prize":0,"displayName":null},
+ {"ethAddress":"0x5b5d51203a0f9079f8aeb098a6523a13f298c060","accountValue":"52000000.0","windowPerformances":[["day",{"pnl":"300000.0","roi":"0.0058","vlm":"80000000.0"}],["week",{"pnl":"1250000.0","roi":"0.024","vlm":"400000000.0"}],["month",{"pnl":"4000000.0","roi":"0.08","vlm":"1500000000.0"}],["allTime",{"pnl":"30000000.0","roi":"1.4","vlm":"9000000000.0"}]],"prize":0,"displayName":"whale.hl"},
+ {"ethAddress":"not-an-address","accountValue":"1.0","windowPerformances":[],"prize":0,"displayName":null}
+]}

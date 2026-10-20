@@ -1009,4 +1009,48 @@ mod tests {
         drop(rt);
         assert!(!s.flow_tape_alive(), "nothing keeps the tape alive once panes drop it");
     }
+
+    #[test]
+    fn hyperliquid_and_options_requests_answer_offline() {
+        let (out, rx) = mpsc::channel();
+        let s = Shared {
+            provider: std::sync::Arc::new(tr_data::sample::SampleProvider::at(0, 10)),
+            series: Default::default(),
+            cache: std::sync::Mutex::new(None),
+            db: Mutex::new(Db::open_in_memory().unwrap()),
+            out,
+            ctx: egui::Context::default(),
+            flow: Default::default(),
+        };
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let addr = tr_flow::sample::leaderboard()[0].address.clone();
+        rt.block_on(async {
+            for r in [
+                FlowRequest::Leaders,
+                FlowRequest::Positioning,
+                FlowRequest::Wallet { pane: 7, address: addr.clone() },
+                FlowRequest::Prints,
+                FlowRequest::OptionFlow,
+            ] {
+                flow::handle(&s, r).await;
+            }
+        });
+        let got: Vec<FlowResponse> = rx
+            .try_iter()
+            .map(|r| match r {
+                Response::Flow(f) => *f,
+                _ => panic!("unexpected response"),
+            })
+            .collect();
+        assert_eq!(got.len(), 5);
+        assert!(
+            matches!(&got[0], FlowResponse::Leaders { leaders: Ok(l), vaults } if l.len() > 100 && !vaults.is_empty())
+        );
+        assert!(
+            matches!(&got[1], FlowResponse::Positioning(Ok(p)) if p.wallets == flow::SCAN_WALLETS && p.coin("BTC").is_some())
+        );
+        assert!(matches!(&got[2], FlowResponse::Wallet { pane: 7, account: Ok(a), .. } if a.address == addr));
+        assert!(matches!(&got[3], FlowResponse::Prints(_)));
+        assert!(matches!(&got[4], FlowResponse::OptionFlow(_)));
+    }
 }

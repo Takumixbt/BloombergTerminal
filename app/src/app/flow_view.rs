@@ -274,6 +274,8 @@ impl TerminalApp {
                     }
                 }
             }
+            // Hyperliquid and options responses are handled in `hl_view` first.
+            _ => {}
         }
     }
 

@@ -1,4 +1,4 @@
-# Velo and OpenMarket: feature study and what this fork implements
+# Velo, OpenMarket, Hyperdash and Gambit: feature study and what this fork implements
 
 Upstream built its chart UX from REA ("Reverse Engineer Anything") captures of
 tradingview.com. For Velo and OpenMarket this fork worked from their **public descriptions**
@@ -34,13 +34,59 @@ A social, professional charting platform across crypto, equities and prediction 
 |---|---|---|
 | Order book heatmap (incl. Hyperliquid HIP-3) | `HEAT` on Binance futures or Hyperliquid | Done (main Hyperliquid perps; HIP-3 not yet) |
 | Footprint charts (volume at price, bid × ask) | `FOOT` with 1m/5m/15m/1h, POC, delta, CVD | Done |
-| Liquidation heatmap from on-chain Hyperliquid positions | — | Not done: needs position data (Hyperliquid `clearinghouseState` per address) |
+| Liquidation heatmap from on-chain Hyperliquid positions | `HLPOS` liquidation map from the top 200 wallets' positions | Partial (current levels, sampled wallets) |
 | TP/SL heatmap | — | Not done |
 | Suites (bundles of up to 8 indicators, e.g. "Ultimate CVD", "Aggregated Derivatives") | Saved layouts; the built-in **Crypto Desk** layout | Partial |
 | Prediction markets (Polymarket events, candles, depth) | `PRED`: markets, outcome history, book | Done |
 | Equities | Upstream (Yahoo/Alpaca) | Done upstream |
 | Scripting (kScript / "wrun") and AI-assisted indicator building | Upstream has 151 built-in indicators | Not done |
 | Social sharing of charts | Layout import/export (JSON) | Partial |
+
+## Hyperdash (hyperdash.com)
+
+Hyperliquid analytics: wallet and trader tracking, liquidation maps from real positions,
+cohorts, leaderboards, vaults, copy trading and TWAP orders.
+
+| Hyperdash feature (public description) | Here | Status |
+|---|---|---|
+| Track any wallet's positions, PnL and liquidation prices | `HLW <address>`, saved wallets | Done |
+| Alerts on tracked traders' moves | Toast when a displayed wallet opens, closes, flips or resizes | Partial (only wallets open in a pane) |
+| Leaderboard / top trader discovery | `HLTOP` (24h/7d/30d/all, PnL/ROI/value/volume) | Done |
+| Vaults | `VAULTS` (TVL, APR, open the vault's positions) | Done |
+| Liquidation heatmap from known positions | `HLPOS` liquidation map (top 200 wallets) | Done as a current-levels map (not a time heatmap) |
+| Cohort analysis by account size | `HLPOS` cohorts (Shrimp → Kraken) | Done |
+| Whale positions | `HLPOS` largest positions; `PRINTS` large trades with wallets | Done |
+| Copy trading, TWAP execution | — | Not done: needs order signing (below) |
+
+## Gambit Terminal (terminal.gambit.zone)
+
+Public description: a crypto and equities terminal with live charts, news, options flow,
+on-chain data and a non-custodial Hyperliquid perps order ticket. Gambit marks its software,
+design and layout as proprietary, so only that one-line feature list was used.
+
+| Gambit feature | Here | Status |
+|---|---|---|
+| Live charts, news, equities and crypto | Upstream terminal-rs | Done upstream |
+| Options flow | `OFLOW`: Deribit BTC/ETH trades, blocks, premiums, put/call | Done for crypto; no free US equity flow source |
+| On-chain data | Hyperliquid wallets, positioning and prints | Done (Hyperliquid) |
+| Non-custodial Hyperliquid order ticket | — | Not done (below) |
+
+### A safe path to Hyperliquid order entry
+
+Orders on Hyperliquid are signed (EIP-712 over a msgpack hash of the action) by the account
+or by an **API ("agent") wallet** the account approves. The safe design, mirroring upstream's
+SnapTrade trading flow:
+
+1. The user creates an agent wallet in the Hyperliquid app (it can trade but not withdraw)
+   and pastes its private key into Settings, stored in the OS keychain / Credential Manager,
+   never in layouts or logs.
+2. Trading stays off until explicitly enabled; every order is shown with size, notional,
+   leverage and the estimated liquidation price and needs one confirmation.
+3. Signing is implemented against Hyperliquid's published reference vectors (their Python
+   SDK test fixtures) and exercised only against testnet (`api.hyperliquid-testnet.xyz`) in CI.
+
+This was deliberately not built blind in this pass: a signing bug places or rejects real
+orders, and the build environment could not reach Hyperliquid to test it.
 
 ## Next steps (suggested order)
 

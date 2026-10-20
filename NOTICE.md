@@ -7,10 +7,15 @@ Michael Shimeles (imported from commit `d6006d6`), extended with:
   GUI subsystem with a log file, installer and CI);
 - crypto derivatives, liquidations, order-flow and prediction-market panes in the new
   `crates/flow` (`tr-flow`), inspired by the public feature sets of
-  [Velo](https://velo.xyz) and [OpenMarket](https://openmarket.xyz).
+  [Velo](https://velo.xyz) and [OpenMarket](https://openmarket.xyz);
+- Hyperliquid trader intelligence and crypto options flow, inspired by the public feature
+  lists of [Hyperdash](https://hyperdash.com) and [Gambit Terminal](https://terminal.gambit.zone).
 
-No code, assets, branding or data from Velo, OpenMarket, TradingView or Bloomberg is used. Their
-products were only studied for what features they offer; every pane here is built on the
+No code, assets, branding, layout or data from Velo, OpenMarket, Hyperdash, Gambit,
+TradingView or Bloomberg is used. Gambit states that its software, design and layout are
+proprietary; only its one-line public description of features (charts, news, options flow,
+on-chain data, a Hyperliquid order ticket) informed this work, and its site was never
+accessed or copied. These products were only studied for what features they offer; every pane here is built on the
 venues' own public APIs (see [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)).
 
 ## Licence status
@@ -22,7 +27,8 @@ a licence (or grants permission), treat this repository as for **personal, non-c
 use**, keep it private, and do not distribute builds. If upstream later adopts a licence, its
 terms apply to the upstream portions and this notice should be updated.
 
-The new code in `crates/flow`, `app/src/app/flow_view.rs`, `app/src/worker/flow.rs`,
+The new code in `crates/flow`, `app/src/app/flow_view.rs`, `app/src/app/hl_view.rs`,
+`app/src/worker/flow.rs`,
 `app/src/platform.rs` and the Windows scripts was written for this fork.
 
 ## Data terms

@@ -8,6 +8,7 @@ mod broker;
 mod chrome;
 mod demo;
 mod flow_view;
+mod hl_view;
 mod hotkeys_view;
 mod options_view;
 mod palette_view;
@@ -20,6 +21,7 @@ mod workspace;
 
 pub use broker::PosSort;
 pub use flow_view::FlowView;
+pub use hl_view::SavedWallet;
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -84,6 +86,16 @@ pub enum PaneKind {
     Flow(Box<flow_view::FlowPane>),
     /// Prediction markets (`PRED`).
     Predict(Box<flow_view::PredPane>),
+    /// A Hyperliquid wallet (`HLW`).
+    Wallet(Box<hl_view::WalletPane>),
+    /// Hyperliquid leaderboard and vaults (`HLTOP`).
+    Leaders(Box<hl_view::LeadersPane>),
+    /// Top-wallet positioning in a coin (`HLPOS`).
+    HlPositioning(Box<hl_view::PositioningPane>),
+    /// Large Hyperliquid trades (`PRINTS`).
+    Prints(Box<hl_view::PrintsPane>),
+    /// Deribit options flow (`OFLOW`).
+    OptionFlow(Box<hl_view::OptionFlowPane>),
 }
 
 pub struct OptionsPane {
@@ -212,6 +224,17 @@ impl PaneKind {
                 FlowView::Footprint => format!("{} Footprint", f.coin),
             },
             PaneKind::Predict(_) => "Predictions".into(),
+            PaneKind::Wallet(w) => {
+                w.address.as_deref().map_or_else(|| "Wallet".into(), tr_flow::hyperliquid::short_address)
+            }
+            PaneKind::Leaders(l) if l.vaults => "HL Vaults".into(),
+            PaneKind::Leaders(_) => "HL Leaderboard".into(),
+            PaneKind::HlPositioning(p) => format!("{} Positioning", p.coin),
+            PaneKind::Prints(p) => match &p.coin {
+                Some(c) => format!("{c} Prints"),
+                None => "Whale Prints".into(),
+            },
+            PaneKind::OptionFlow(o) => format!("{} Options Flow", o.currency.as_deref().unwrap_or("Crypto")),
         }
     }
 
@@ -237,6 +260,11 @@ impl PaneKind {
             PaneKind::Flow(f) if f.view == FlowView::Heatmap => "HEAT",
             PaneKind::Flow(_) => "FOOT",
             PaneKind::Predict(_) => "PRED",
+            PaneKind::Wallet(_) => "HLW",
+            PaneKind::Leaders(_) => "HLTOP",
+            PaneKind::HlPositioning(_) => "HLPOS",
+            PaneKind::Prints(_) => "PRNT",
+            PaneKind::OptionFlow(_) => "OFLW",
         }
     }
 
@@ -310,6 +338,11 @@ impl PaneKind {
                 PaneSettings::Flow { coin: f.coin.clone(), venue: f.venue, view: f.view, tf_secs: f.tf_secs }
             }
             PaneKind::Predict(p) => PaneSettings::Predict { query: p.query.clone() },
+            PaneKind::Wallet(w) => PaneSettings::Wallet { address: w.address.clone(), saved: w.saved.clone() },
+            PaneKind::Leaders(l) => PaneSettings::Leaders { vaults: l.vaults },
+            PaneKind::HlPositioning(p) => PaneSettings::HlPositioning { coin: p.coin.clone() },
+            PaneKind::Prints(p) => PaneSettings::Prints { coin: p.coin.clone(), min_usd: p.min_usd },
+            PaneKind::OptionFlow(o) => PaneSettings::OptionFlow { currency: o.currency.clone() },
         }
     }
 
@@ -367,7 +400,43 @@ impl PaneKind {
                 PaneKind::Flow(Box::new(flow_view::FlowPane::new(&coin, venue, view, tf_secs)))
             }
             PaneSettings::Predict { query } => PaneKind::Predict(Box::new(flow_view::PredPane::new(&query))),
+            PaneSettings::Wallet { address, saved } => {
+                PaneKind::Wallet(Box::new(hl_view::WalletPane::new(address, saved)))
+            }
+            PaneSettings::Leaders { vaults } => PaneKind::leaders(vaults),
+            PaneSettings::HlPositioning { coin } => PaneKind::hl_positioning(&coin),
+            PaneSettings::Prints { coin, min_usd } => PaneKind::prints(coin, min_usd),
+            PaneSettings::OptionFlow { currency } => PaneKind::option_flow(currency),
         }
+    }
+
+    fn leaders(vaults: bool) -> PaneKind {
+        PaneKind::Leaders(Box::new(hl_view::LeadersPane {
+            vaults,
+            window: Default::default(),
+            sort: Default::default(),
+            filter: String::new(),
+        }))
+    }
+
+    fn hl_positioning(coin: &str) -> PaneKind {
+        PaneKind::HlPositioning(Box::new(hl_view::PositioningPane { coin: tr_flow::venue::coin_of_key(coin) }))
+    }
+
+    fn prints(coin: Option<String>, min_usd: f64) -> PaneKind {
+        PaneKind::Prints(Box::new(hl_view::PrintsPane {
+            coin: coin.map(|c| tr_flow::venue::coin_of_key(&c)),
+            min_usd: if min_usd > 0.0 { min_usd } else { 100_000.0 },
+        }))
+    }
+
+    fn option_flow(currency: Option<String>) -> PaneKind {
+        PaneKind::OptionFlow(Box::new(hl_view::OptionFlowPane {
+            currency: currency.map(|c| tr_flow::venue::coin_of_key(&c)).filter(|c| tr_flow::deribit::supported(c)),
+            min_premium: 0.0,
+            blocks_only: false,
+            window_min: 240,
+        }))
     }
 }
 
@@ -558,6 +627,8 @@ pub struct TerminalApp {
     palette: crate::palette::Palette,
     /// Derivatives board, liquidation tape and prediction markets shared by their panes.
     flow: flow_view::FlowData,
+    /// Hyperliquid leaderboard, positioning and the prints / options-flow streams.
+    hl: hl_view::HlData,
 }
 
 /// Resolve a run of words (`BTCUSD CRNCY AAPL US EQUITY MSFT`) into market keys.
@@ -688,6 +759,7 @@ impl TerminalApp {
             last_chrome_poll: None,
             palette: crate::palette::Palette::load(&data_dir().join("palette.json")),
             flow: Default::default(),
+            hl: Default::default(),
         };
         let mut doc = None;
         if let Some(s) = &settings {
@@ -715,12 +787,16 @@ impl TerminalApp {
         if !app.store.exists(&app.layout_name) {
             app.save_layout();
         }
-        // New installs also get a ready-made crypto workspace (`LAYOUT Crypto Desk`).
-        if first_run
-            && !app.store.exists(LayoutDoc::CRYPTO_DESK)
-            && let Err(e) = app.store.save(&LayoutDoc::crypto_workspace(&app.prefs.panels))
-        {
-            tracing::warn!("saving the Crypto Desk layout: {e:#}");
+        // New installs also get ready-made crypto workspaces (`LAYOUT Crypto Desk`,
+        // `LAYOUT Hyperliquid Desk`).
+        if first_run {
+            for doc in [LayoutDoc::crypto_workspace(&app.prefs.panels), LayoutDoc::hyperliquid_workspace()] {
+                if !app.store.exists(&doc.name)
+                    && let Err(e) = app.store.save(&doc)
+                {
+                    tracing::warn!("saving the {} layout: {e:#}", doc.name);
+                }
+            }
         }
         app.refresh_layout_names();
         app.worker.send(Request::Latest { limit: 2_000 });
@@ -823,6 +899,15 @@ impl TerminalApp {
                     Function::Deriv(_) => Function::Deriv(coin),
                     _ => Function::Liquidations(coin),
                 });
+            }
+            Command::SymbolFunction(s, Function::HlPositioning(None)) => {
+                self.apply(Function::HlPositioning(Some(tr_flow::venue::coin_of_key(&s))));
+            }
+            Command::SymbolFunction(s, Function::Prints(None)) => {
+                self.apply(Function::Prints(Some(tr_flow::venue::coin_of_key(&s))));
+            }
+            Command::SymbolFunction(s, Function::OptionFlow(None)) => {
+                self.apply(Function::OptionFlow(Some(tr_flow::venue::coin_of_key(&s))));
             }
             Command::SymbolFunction(s, Function::OrderFlow { view, venue, coin: None }) => {
                 self.apply(Function::OrderFlow { view, venue, coin: Some(tr_flow::venue::coin_of_key(&s)) });
@@ -938,6 +1023,37 @@ impl TerminalApp {
                 self.open_panel(PaneKind::Flow(Box::new(flow_view::FlowPane::new(&coin, venue, view, 60))));
             }
             Function::Predict(q) => self.open_panel(PaneKind::Predict(Box::new(flow_view::PredPane::new(&q)))),
+            Function::HlWallet(addr) => {
+                let addr = tr_flow::hyperliquid::parse_address(&addr);
+                // Reuse the focused (or any) wallet pane so its saved list stays in one place.
+                let focus = self.focus;
+                let target = self
+                    .panes
+                    .iter()
+                    .position(|p| p.id == focus && matches!(p.kind, PaneKind::Wallet(_)))
+                    .or_else(|| self.panes.iter().position(|p| matches!(p.kind, PaneKind::Wallet(_))));
+                match (target, addr) {
+                    (Some(i), Some(a)) => {
+                        if let PaneKind::Wallet(w) = &mut self.panes[i].kind {
+                            w.address = Some(a.clone());
+                            w.account = None;
+                            w.fills.clear();
+                            w.fetched = None;
+                        }
+                        let id = self.panes[i].id;
+                        self.reveal(id);
+                        self.focus = id;
+                    }
+                    (_, a) => self.open_panel(PaneKind::Wallet(Box::new(hl_view::WalletPane::new(a, Vec::new())))),
+                }
+            }
+            Function::HlLeaders { vaults } => self.open_panel(PaneKind::leaders(vaults)),
+            Function::HlPositioning(coin) => {
+                let coin = coin.unwrap_or_else(|| self.focused_coin());
+                self.open_panel(PaneKind::hl_positioning(&coin));
+            }
+            Function::Prints(coin) => self.open_panel(PaneKind::prints(coin, 0.0)),
+            Function::OptionFlow(ccy) => self.open_panel(PaneKind::option_flow(ccy)),
             Function::Options => {
                 let sym = self.optionable_symbol();
                 self.open_panel(PaneKind::Options(Box::new(OptionsPane::new(&sym, 12, true))));
@@ -1143,7 +1259,7 @@ impl TerminalApp {
                 Response::Curves(c) => self.curves = Some(c),
                 Response::SearchHits { query, hits } => self.net_hits = (query, hits),
                 Response::Trade(r) => self.on_trade(*r),
-                Response::Flow(r) => self.flow_response(*r),
+                Response::Flow(r) => self.hl_response(*r),
                 Response::CongressRefreshed(summary) => {
                     self.congress_status = summary.to_string();
                     self.congress_checked = Some(chrono::Local::now());
@@ -1444,6 +1560,7 @@ impl TerminalApp {
         }
         self.broker_periodic(&visible);
         self.flow_periodic(&visible);
+        self.hl_periodic(&visible);
         if let Some((q, at)) = &self.search_pending
             && at.elapsed() > Duration::from_millis(300)
         {

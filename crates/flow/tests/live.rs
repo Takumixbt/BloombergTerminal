@@ -52,3 +52,20 @@ async fn streams_deliver() {
     }
     eprintln!("liquidation feeds: {:?}", tape.lock().unwrap().status);
 }
+
+#[tokio::test]
+#[ignore]
+async fn hyperliquid_wallets_leaderboard_and_options_flow() {
+    let http = Http::new().unwrap();
+    let hl = tr_flow::hyperliquid::Client::new(http.clone());
+    let lb = hl.leaderboard().await.unwrap();
+    eprintln!("leaderboard: {} wallets, top {}", lb.len(), lb[0].label());
+    assert!(lb.len() > 100);
+    let wallets: Vec<String> = lb.iter().take(20).map(|l| l.address.clone()).collect();
+    let pos = hl.positioning(&wallets).await;
+    assert!(pos.wallets > 10, "scanned {} ({} errors)", pos.wallets, pos.errors);
+    let _ = hl.fills(&wallets[0]).await.unwrap();
+    assert!(!hl.vaults().await.unwrap().is_empty());
+    let trades = tr_flow::options_flow::fetch(&http, "BTC").await.unwrap();
+    assert!(!trades.is_empty());
+}

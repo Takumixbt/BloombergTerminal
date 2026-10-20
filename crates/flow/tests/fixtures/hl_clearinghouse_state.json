@@ -1,0 +1,9 @@
+{"marginSummary":{"accountValue":"1250000.5","totalNtlPos":"926000.0","totalRawUsd":"580000.0","totalMarginUsed":"92600.0"},
+ "crossMarginSummary":{"accountValue":"1250000.5","totalNtlPos":"670000.0","totalRawUsd":"580000.0","totalMarginUsed":"67000.0"},
+ "crossMaintenanceMarginUsed":"16750.0","withdrawable":"1100000.25",
+ "assetPositions":[
+  {"type":"oneWay","position":{"coin":"BTC","szi":"10.0","leverage":{"type":"cross","value":10},"entryPx":"64800.0","positionValue":"670000.0","unrealizedPnl":"22000.0","returnOnEquity":"0.3395","liquidationPx":"58120.0","marginUsed":"67000.0","maxLeverage":40,"cumFunding":{"allTime":"310.2","sinceOpen":"120.0","sinceChange":"20.0"}}},
+  {"type":"oneWay","position":{"coin":"ETH","szi":"-100.0","leverage":{"type":"isolated","value":10,"rawUsd":"281600.0"},"entryPx":"2530.0","positionValue":"256000.0","unrealizedPnl":"-3000.0","returnOnEquity":"-0.1186","liquidationPx":"2790.5","marginUsed":"25600.0","maxLeverage":25,"cumFunding":{"allTime":"-40.0","sinceOpen":"-12.5","sinceChange":"-1.0"}}},
+  {"type":"oneWay","position":{"coin":"SOL","szi":"0.0","leverage":{"type":"cross","value":5},"entryPx":null,"positionValue":"0.0","unrealizedPnl":"0.0","returnOnEquity":"0.0","liquidationPx":null,"marginUsed":"0.0","maxLeverage":20,"cumFunding":{"allTime":"0.0","sinceOpen":"0.0","sinceChange":"0.0"}}}
+ ],
+ "time":1760936400000}

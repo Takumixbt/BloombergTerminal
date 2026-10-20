@@ -5,7 +5,10 @@
 > **crypto derivatives and order-flow panes** inspired by [Velo](https://velo.xyz) and
 > [OpenMarket](https://openmarket.xyz): a cross-venue funding / open interest / basis board,
 > live liquidations, an order book heatmap, footprint charts with CVD, and Polymarket
-> prediction markets. Every data source is listed in [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md);
+> prediction markets; plus **Hyperliquid trader intelligence** and **crypto options flow**
+> inspired by [Hyperdash](https://hyperdash.com) and [Gambit Terminal](https://terminal.gambit.zone):
+> a wallet tracker, leaderboard and vaults, top-wallet positioning with a liquidation map,
+> whale prints and Deribit options flow. Every data source is listed in [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md);
 > attribution and licence status are in [`NOTICE.md`](NOTICE.md).
 >
 > ![Crypto Desk layout (offline sample data): BTC chart, order book heatmap, derivatives board, footprint, liquidations and prediction markets](docs/img/crypto-desk.png)
@@ -24,7 +27,19 @@
 > | `HEAT` / `HEAT ETH HL` | Order book heatmap (resting liquidity over time, log-scaled), best bid/ask, trade bubbles, live book profile, CVD | Binance USDⓈ-M depth diff stream (synced by update id) or Hyperliquid `l2Book` |
 > | `FOOT` / `FOOT SOL` / `CVD` | Footprint candles (sell × buy at each price, imbalance shading, POC), delta row and CVD; 1m/5m/15m/1h; drag to scroll, wheel to zoom | Live trade stream (`aggTrade` or Hyperliquid `trades`) |
 > | `PRED` / `PRED fed` | Polymarket markets by 24h volume with search; outcome odds history and order book | Polymarket Gamma + CLOB APIs |
-> | `LAYOUT Crypto Desk` | All of the above in one 3×2 workspace (created on first launch), with the chart, heatmap and footprint in the blue link group | |
+> | `HLW 0x…` (`WALLET`) | Any Hyperliquid wallet: account value, uPnL, notional, net exposure, leverage; positions with entry, mark, PnL, ROE, liquidation price and distance to it, leverage, funding; recent fills (opens, closes, liquidations, closed PnL). Save wallets; a toast fires when a displayed wallet opens, closes, flips or resizes a position | Hyperliquid `info` API (`clearinghouseState`, `userFills`) |
+> | `HLTOP` / `VAULTS` | Hyperliquid leaderboard: PnL, ROI and volume over 24h / 7d / 30d / all time, sortable and filterable; vaults by TVL with APR. Click to open the wallet or vault | Hyperliquid stats (leaderboard, vaults) |
+> | `HLPOS BTC` (`WHALES`) | How the top 200 wallets are positioned in a coin: long vs short notional and wallet counts, net and uPnL; size cohorts (Shrimp → Kraken); a liquidation map built from their real liquidation prices; the 50 largest positions | Scan of the leaderboard's largest accounts |
+> | `PRINTS` / `PRINTS BTC` | Whale prints: Hyperliquid trades of $25K+ with the taker and maker wallets; click to open the wallet | Hyperliquid `trades` websocket |
+> | `OFLOW` / `OFLOW ETH` | Crypto options flow: every Deribit BTC/ETH option trade with premium, IV and BLOCK flag; calls/puts bought and sold, put/call ratio, top strikes and expiries; filters by size and blocks | Deribit public trades |
+> | `LAYOUT Crypto Desk` | Chart, heatmap, derivatives board, footprint, liquidations and predictions in one 3×2 workspace (created on first launch), with the chart, heatmap and footprint in the blue link group | |
+> | `LAYOUT Hyperliquid Desk` | Leaderboard, wallet, whale prints, positioning, options flow and liquidations (created on first launch) | |
+>
+> ![Hyperliquid Desk (offline sample data): leaderboard, wallet tracker, whale prints, top-wallet positioning with cohorts and liquidation levels, Deribit options flow and vaults](docs/img/hyperliquid-desk.png)
+>
+> Not built: live order entry on Hyperliquid (Gambit's non-custodial ticket) and copy trading
+> (Hyperdash). Both need your wallet's private key to sign orders; see
+> [`docs/analysis/velo-openmarket.md`](docs/analysis/velo-openmarket.md) for the safe way to add it.
 >
 > The new panes are in the `+` menus, the ⌘K/Ctrl+K palette and Help (F1), save with layouts,
 > follow link groups for crypto keys, and run fully offline with `TR_PROVIDER=sample`.

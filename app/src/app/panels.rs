@@ -122,12 +122,22 @@ impl TerminalApp {
             | PaneKind::Deriv(_)
             | PaneKind::Liq(_)
             | PaneKind::Flow(_)
-            | PaneKind::Predict(_) => {}
+            | PaneKind::Predict(_)
+            | PaneKind::Wallet(_)
+            | PaneKind::Leaders(_)
+            | PaneKind::HlPositioning(_)
+            | PaneKind::Prints(_)
+            | PaneKind::OptionFlow(_) => {}
         }
         match self.panes[i].kind {
             PaneKind::Deriv(_) | PaneKind::Liq(_) | PaneKind::Flow(_) | PaneKind::Predict(_) => {
                 actions.extend(self.flow_content(ui, i))
             }
+            PaneKind::Wallet(_)
+            | PaneKind::Leaders(_)
+            | PaneKind::HlPositioning(_)
+            | PaneKind::Prints(_)
+            | PaneKind::OptionFlow(_) => actions.extend(self.hl_content(ui, i)),
             PaneKind::Watchlist => actions.extend(self.watchlist(ui)),
             PaneKind::Help => self.help_panel(ui),
             PaneKind::Settings => {

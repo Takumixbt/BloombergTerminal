@@ -358,6 +358,229 @@ pub fn detail(m: &Market, now: i64) -> polymarket::Detail {
     polymarket::Detail { market_id: m.id.clone(), history: vec![yes, no], book: Some(book), error: None }
 }
 
+// ---- Hyperliquid, whale prints and options flow -------------------------------------
+
+fn fake_address(r: &mut Rng) -> String {
+    format!("0x{:016x}{:016x}{:08x}", r.next_u64(), r.next_u64(), r.next_u64() as u32)
+}
+
+/// A simulated leaderboard (300 wallets, largest first).
+pub fn leaderboard() -> Vec<crate::hyperliquid::Leader> {
+    use crate::hyperliquid::{Leader, Perf};
+    let mut r = Rng::new(7);
+    let names = ["whale.hl", "loracle", "degen-capital", "hlp-hunter", "funding-farmer"];
+    let mut out: Vec<Leader> = (0..300)
+        .map(|i| {
+            let av = 8e7 * (-(i as f64) / 40.0).exp() * (0.6 + 0.8 * r.f());
+            let perf = |r: &mut Rng, scale: f64| {
+                let roi = r.n() * scale;
+                Perf { pnl: av * roi, roi, volume: av * (1.0 + 20.0 * r.f()) * scale * 10.0 }
+            };
+            Leader {
+                address: fake_address(&mut r),
+                name: (i < names.len()).then(|| names[i].to_string()),
+                account_value: av,
+                day: perf(&mut r, 0.03),
+                week: perf(&mut r, 0.08),
+                month: perf(&mut r, 0.2),
+                all_time: perf(&mut r, 1.2),
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| b.account_value.total_cmp(&a.account_value));
+    out
+}
+
+pub fn vaults() -> Vec<crate::hyperliquid::Vault> {
+    let mut r = Rng::new(9);
+    let names = [
+        "Hyperliquidity Provider (HLP)",
+        "Growi HF",
+        "Elsewhere",
+        "pmalt",
+        "Systemic Strategies",
+        "Bitcoin Momentum",
+        "Funding Arb Vault",
+        "MC Recovery Fund",
+    ];
+    names
+        .iter()
+        .enumerate()
+        .map(|(i, n)| crate::hyperliquid::Vault {
+            name: (*n).into(),
+            address: fake_address(&mut r),
+            leader: fake_address(&mut r),
+            tvl: 3.8e8 / (i as f64 * 3.0 + 1.0),
+            apr: 0.05 + r.n() * 0.2,
+            closed: false,
+        })
+        .collect()
+}
+
+/// A simulated account for any address (deterministic per address).
+pub fn account(address: &str) -> crate::hyperliquid::Account {
+    use crate::hyperliquid::{Account, Position};
+    let mut r = Rng::new(seed(address));
+    let av = 2e4 * (r.f() * 9.0).exp();
+    let n = 1 + (r.f() * 6.0) as usize;
+    let positions = (0..n)
+        .map(|_| {
+            let (coin, px, _) = COINS[(r.f().powi(2) * COINS.len() as f64) as usize];
+            let long = r.f() < 0.55;
+            let lev = [2.0, 3.0, 5.0, 10.0, 20.0, 40.0][(r.f() * 6.0) as usize];
+            let value = av * (0.2 + r.f() * 1.5);
+            let entry = px * (1.0 + r.n() * 0.03);
+            let size = value / px * if long { 1.0 } else { -1.0 };
+            let upnl = (px - entry) * size;
+            let liq = if long { px * (1.0 - 0.9 / lev) } else { px * (1.0 + 0.9 / lev) };
+            Position {
+                coin: coin.into(),
+                size,
+                entry,
+                value,
+                upnl,
+                roe: upnl / (value / lev),
+                liq_px: Some(liq),
+                leverage: lev,
+                cross: r.f() < 0.8,
+                margin: value / lev,
+                funding: r.n() * value * 0.0005,
+            }
+        })
+        .collect::<Vec<_>>();
+    let notional = positions.iter().map(|p| p.value).sum();
+    Account {
+        address: address.to_string(),
+        account_value: av,
+        margin_used: positions.iter().map(|p| p.margin).sum(),
+        notional,
+        withdrawable: av * 0.4,
+        positions,
+        time: chrono::Utc::now().timestamp_millis(),
+    }
+}
+
+pub fn fills(address: &str, now_ms: i64) -> Vec<crate::hyperliquid::Fill> {
+    let a = account(address);
+    let mut r = Rng::new(seed(address) ^ 3);
+    let mut out: Vec<crate::hyperliquid::Fill> = (0..40)
+        .map(|k| {
+            let p = &a.positions[k % a.positions.len()];
+            let open = r.f() < 0.6;
+            let side = if p.is_long() { "Long" } else { "Short" };
+            crate::hyperliquid::Fill {
+                coin: p.coin.clone(),
+                price: p.mark() * (1.0 + r.n() * 0.01),
+                size: p.size.abs() * 0.1 * (0.2 + r.f()),
+                buy: p.is_long() == open,
+                time: now_ms - (k as i64) * 1_800_000 - (r.f() * 900_000.0) as i64,
+                dir: format!("{} {side}", if open { "Open" } else { "Close" }),
+                closed_pnl: if open { 0.0 } else { r.n() * p.value * 0.01 },
+                fee: p.value * 0.00004,
+            }
+        })
+        .collect();
+    out.sort_by_key(|f| std::cmp::Reverse(f.time));
+    out
+}
+
+pub fn positioning(wallets: &[String]) -> crate::hyperliquid::Positioning {
+    let accounts: Vec<_> = wallets.iter().map(|w| account(w)).collect();
+    crate::hyperliquid::Positioning {
+        wallets: accounts.len(),
+        coins: crate::hyperliquid::aggregate(&accounts),
+        updated: chrono::Utc::now().timestamp(),
+        simulated: true,
+        errors: 0,
+    }
+}
+
+/// Simulated whale prints until the tape is dropped by everyone else.
+pub async fn run_prints(tape: crate::prints::SharedTape) {
+    let wallets: Vec<String> = leaderboard().into_iter().take(60).map(|l| l.address).collect();
+    if let Ok(mut t) = tape.lock() {
+        t.simulated = true;
+        t.status = "simulated".into();
+    }
+    let mut r = Rng::new(11);
+    while Arc::strong_count(&tape) > 1 {
+        tokio::time::sleep(Duration::from_millis(300 + (r.f() * 1500.0) as u64)).await;
+        let (coin, px, _) = COINS[(r.f().powi(2) * 8.0) as usize];
+        let usd = crate::prints::MIN_USD * (r.f() * 5.0).exp();
+        let pick = |r: &mut Rng| wallets[(r.f() * wallets.len() as f64) as usize].clone();
+        let p = crate::prints::Print {
+            coin: coin.into(),
+            price: px,
+            size: usd / px,
+            usd,
+            buy: r.f() < 0.5,
+            ts: chrono::Utc::now().timestamp_millis(),
+            taker: pick(&mut r),
+            maker: pick(&mut r),
+        };
+        if let Ok(mut t) = tape.lock() {
+            t.push(p);
+        }
+    }
+}
+
+/// Simulated Deribit option trades.
+pub fn option_trades(now_ms: i64, n: usize, seed_v: u64) -> Vec<crate::options_flow::OptionTrade> {
+    let mut r = Rng::new(seed_v);
+    let now = now_ms / 1000;
+    let expiries: Vec<i64> = [3, 10, 38, 66, 157, 248].iter().map(|d| (now / 86_400 + d) * 86_400 + 8 * 3600).collect();
+    (0..n)
+        .map(|k| {
+            let btc = r.f() < 0.7;
+            let (ccy, index, step) = if btc { ("BTC", 67_000.0, 1_000.0) } else { ("ETH", 2_560.0, 50.0) };
+            let call = r.f() < 0.55;
+            let strike = ((index * (1.0 + r.n() * 0.12)) / step).round() * step;
+            let expiry = expiries[(r.f() * expiries.len() as f64) as usize];
+            let block = r.f() < 0.06;
+            let amount = if block { 50.0 + r.f() * 400.0 } else { 0.1 + (r.f() * 4.0).exp() };
+            let moneyness = if call { index - strike } else { strike - index };
+            let price = ((moneyness.max(0.0) / index) + 0.004 + 0.02 * r.f()).max(0.0005);
+            crate::options_flow::OptionTrade {
+                id: format!("sim-{seed_v}-{k}"),
+                ts: now_ms - (k as i64) * 4_000,
+                instrument: format!(
+                    "{ccy}-{}-{strike:.0}-{}",
+                    chrono::DateTime::from_timestamp(expiry, 0)
+                        .map(|d| d.format("%-d%b%y").to_string().to_uppercase())
+                        .unwrap_or_default(),
+                    if call { "C" } else { "P" }
+                ),
+                currency: ccy.into(),
+                expiry,
+                strike,
+                call,
+                buy: r.f() < 0.52,
+                amount,
+                price,
+                index,
+                iv: Some(0.4 + r.f() * 0.25),
+                block,
+            }
+        })
+        .collect()
+}
+
+pub async fn run_option_flow(tape: Arc<std::sync::Mutex<crate::options_flow::Tape>>) {
+    let now = chrono::Utc::now().timestamp_millis();
+    if let Ok(mut t) = tape.lock() {
+        t.simulated = true;
+        t.merge(option_trades(now, 600, 1));
+    }
+    let mut k = 2;
+    while Arc::strong_count(&tape) > 1 {
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        k += 1;
+        if let Ok(mut t) = tape.lock() {
+            t.merge(option_trades(chrono::Utc::now().timestamp_millis(), 1, k));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,5 +603,19 @@ mod tests {
         let bk = book(&mut r, 100.0, 0.1, &[(99.0, 50.0)]);
         assert!(bk.best_bid().unwrap() < bk.best_ask().unwrap());
         assert!((0..1000).map(|_| r.f()).all(|x| (0.0..1.0).contains(&x)));
+        let lb = leaderboard();
+        assert!(lb.windows(2).all(|w| w[0].account_value >= w[1].account_value));
+        assert!(crate::hyperliquid::parse_address(&lb[0].address).is_some(), "valid addresses");
+        let wallets: Vec<String> = lb.iter().take(50).map(|l| l.address.clone()).collect();
+        let pos = positioning(&wallets);
+        assert!(pos.coin("BTC").is_some_and(|c| !c.liq_levels.is_empty()));
+        assert_eq!(account(&wallets[0]), account(&wallets[0]), "deterministic per address");
+        let ot = option_trades(1_760_936_400_000, 50, 1);
+        assert!(
+            ot.iter().all(|t| crate::options_flow::parse_instrument(&t.instrument).is_some()),
+            "{}",
+            ot[0].instrument
+        );
+        assert!(!vaults().is_empty() && !fills(&wallets[0], 0).is_empty());
     }
 }

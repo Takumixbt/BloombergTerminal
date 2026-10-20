@@ -20,7 +20,7 @@ use crate::widgets::{self, Icon};
 use crate::worker::{Request, Worker};
 
 /// Panels offered by the + menus: label and command word.
-pub const PANELS: [(&str, &str); 19] = [
+pub const PANELS: [(&str, &str); 24] = [
     ("Chart", "CHART"),
     ("Watchlist", "WL"),
     ("News", "NEWS"),
@@ -38,6 +38,11 @@ pub const PANELS: [(&str, &str); 19] = [
     ("Book Heatmap", "HEAT"),
     ("Footprint / CVD", "FOOT"),
     ("Prediction Markets", "PRED"),
+    ("Hyperliquid Wallet", "HLW"),
+    ("HL Leaderboard", "HLTOP"),
+    ("HL Positioning", "HLPOS"),
+    ("Whale Prints", "PRINTS"),
+    ("Options Flow", "OFLOW"),
     ("Settings", "PREFS"),
     ("Help", "HELP"),
 ];
@@ -462,7 +467,7 @@ impl TerminalApp {
     }
 
     /// Show a pane: activate its tab (popped windows are always visible).
-    fn reveal(&mut self, id: PaneId) {
+    pub(super) fn reveal(&mut self, id: PaneId) {
         self.dock.activate(id);
     }
 
@@ -510,6 +515,12 @@ impl TerminalApp {
             }
             PaneKind::Liq(l) if l.coin.is_some() && tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
                 l.coin = Some(tr_flow::venue::coin_of_key(&key));
+            }
+            PaneKind::HlPositioning(p) if tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
+                p.coin = tr_flow::venue::coin_of_key(&key);
+            }
+            PaneKind::Prints(p) if p.coin.is_some() && tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
+                p.coin = Some(tr_flow::venue::coin_of_key(&key));
             }
             _ => return false,
         }
@@ -739,6 +750,17 @@ impl TerminalApp {
                     .unwrap_or(tr_flow::Exchange::Binance);
                 PaneKind::Flow(Box::new(super::flow_view::FlowPane::new(&coin, venue, view, 60)))
             }
+            "HLW" | "WALLET" => PaneKind::Wallet(Box::new(super::hl_view::WalletPane::new(
+                words.get(1).map(|w| w.to_string()),
+                Vec::new(),
+            ))),
+            "HLTOP" | "LEADERBOARD" | "LEADERS" => PaneKind::leaders(false),
+            "VAULTS" => PaneKind::leaders(true),
+            "HLPOS" | "WHALES" | "POSITIONING" => {
+                PaneKind::hl_positioning(&words.get(1).map_or_else(|| self.focused_coin(), |w| w.to_string()))
+            }
+            "PRINTS" | "WHALEPRINTS" => PaneKind::prints(words.get(1).map(|w| w.to_string()), 0.0),
+            "OFLOW" | "OPTFLOW" => PaneKind::option_flow(words.get(1).map(|w| w.to_string())),
             "PRED" | "PREDICT" | "POLY" | "POLYMARKET" => {
                 PaneKind::Predict(Box::new(super::flow_view::PredPane::new(&words[1..].join(" "))))
             }

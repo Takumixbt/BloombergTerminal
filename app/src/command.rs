@@ -285,6 +285,18 @@ pub enum Function {
     },
     /// Prediction markets, with an optional search.
     Predict(String),
+    /// A Hyperliquid wallet's positions and fills (`HLW 0x…`).
+    HlWallet(String),
+    /// Hyperliquid leaderboard, or vaults.
+    HlLeaders {
+        vaults: bool,
+    },
+    /// Positioning of the top Hyperliquid wallets in a coin.
+    HlPositioning(Option<String>),
+    /// Large Hyperliquid trades, optionally for one coin.
+    Prints(Option<String>),
+    /// Deribit options flow (`OFLOW`, `OFLOW ETH`).
+    OptionFlow(Option<String>),
 }
 
 /// `[COIN] [VENUE]` in either order (`ETH`, `HL`, `SOL BIN`).
@@ -404,6 +416,16 @@ fn parse_function(head: &str, rest: &[&str]) -> Option<Function> {
             Function::OrderFlow { view, venue, coin }
         }
         "PRED" | "PREDICT" | "POLY" | "POLYMARKET" => Function::Predict(joined()),
+        "HLW" | "WALLET" | "HLWALLET" | "ADDR" => Function::HlWallet(joined()),
+        "HLTOP" | "LEADERBOARD" | "LEADERS" | "HLLB" => Function::HlLeaders { vaults: false },
+        "VAULTS" | "HLVAULTS" => Function::HlLeaders { vaults: true },
+        "HLPOS" | "WHALES" | "POSITIONING" | "COHORTS" => {
+            Function::HlPositioning(rest.first().map(|c| tr_flow::venue::coin_of_key(c)))
+        }
+        "PRINTS" | "WHALEPRINTS" | "BLOCKS" => Function::Prints(rest.first().map(|c| tr_flow::venue::coin_of_key(c))),
+        "OFLOW" | "OPTFLOW" | "OPTIONSFLOW" => {
+            Function::OptionFlow(rest.first().map(|c| tr_flow::venue::coin_of_key(c)))
+        }
         // Timeframes win where spellings overlap (`1D`, `1M`); otherwise try a range (`5D`, `YTD`),
         // then the indicator catalog (`RSI`, `BB 20 2.5`).
         _ => {
@@ -534,6 +556,23 @@ fn describe(f: &Function) -> String {
             coin.as_deref().unwrap_or("(focused coin)"),
             venue.map(|v| format!(" on {}", v.label())).unwrap_or_default()
         ),
+        Function::HlWallet(a) if a.trim().is_empty() => "Hyperliquid wallet tracker".into(),
+        Function::HlWallet(a) => match tr_flow::hyperliquid::parse_address(a) {
+            Some(a) => format!(
+                "Hyperliquid wallet {}: positions, liquidation prices, fills",
+                tr_flow::hyperliquid::short_address(&a)
+            ),
+            None => "Hyperliquid wallet: expects a 0x… address".into(),
+        },
+        Function::HlLeaders { vaults: false } => "Hyperliquid leaderboard: PnL, ROI, volume".into(),
+        Function::HlLeaders { vaults: true } => "Hyperliquid vaults by TVL".into(),
+        Function::HlPositioning(c) => format!(
+            "Top Hyperliquid wallets' positioning in {}: long/short, cohorts, liquidation levels",
+            c.as_deref().unwrap_or("(focused coin)")
+        ),
+        Function::Prints(None) => "Whale prints: large Hyperliquid trades with wallets".into(),
+        Function::Prints(Some(c)) => format!("{c} whale prints on Hyperliquid"),
+        Function::OptionFlow(c) => format!("Options flow (Deribit {})", c.as_deref().unwrap_or("BTC + ETH")),
         Function::Predict(q) if q.is_empty() => "Prediction markets (Polymarket)".into(),
         Function::Predict(q) => format!("Prediction markets matching \"{q}\""),
         Function::Theme(t) => format!("Theme {t}"),

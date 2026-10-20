@@ -1,0 +1,4 @@
+[
+ {"apr":0.112,"pnls":[["day",["0.0","1.0"]],["allTime",["0.0","1000.0"]]],"summary":{"name":"Hyperliquidity Provider (HLP)","vaultAddress":"0xdfc24b077bc1425ad1dea75bcb6f8158e10df303","leader":"0x677d831aef5328190852e24f13c46cac05f984e7","tvl":"380000000.5","isClosed":false,"relationship":{"type":"parent","data":{"childAddresses":[]}},"createTimeMillis":1700000000000}},
+ {"apr":-0.5,"pnls":[],"summary":{"name":"Old vault","vaultAddress":"0x1111111111111111111111111111111111111111","leader":"0x2222222222222222222222222222222222222222","tvl":"10.0","isClosed":true,"relationship":{"type":"normal"},"createTimeMillis":1700000000000}}
+]

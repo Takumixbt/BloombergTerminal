@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use tr_flow::deribit::TermStructure;
 use tr_flow::history::CoinHistory;
+use tr_flow::hyperliquid::{self, Account, Fill, Leader, Positioning, Vault};
 use tr_flow::liq::{SharedTape, Tape};
 use tr_flow::orderflow::{Flow, SharedFlow};
 use tr_flow::perps::{Board, PerpsClient};
@@ -21,6 +22,17 @@ use super::{PaneId, Response, Shared};
 const BOARD_DETAIL: usize = 30;
 /// The board is shared by every derivatives pane; refetch at most this often.
 const BOARD_TTL: Duration = Duration::from_secs(20);
+/// The Hyperliquid leaderboard is large and slow-moving.
+const LEADERS_TTL: Duration = Duration::from_secs(600);
+/// Positioning rescans the top wallets at most this often.
+const POSITIONING_TTL: Duration = Duration::from_secs(180);
+/// Wallets scanned for positioning (two info calls' weight each, well inside the limit).
+pub const SCAN_WALLETS: usize = 200;
+
+pub type SharedPrints = tr_flow::prints::SharedTape;
+/// When the leaderboard was fetched, the leaders and the vaults.
+type CachedLeaders = (Instant, Arc<Vec<Leader>>, Vec<Vault>);
+pub type SharedOptionFlow = Arc<Mutex<tr_flow::options_flow::Tape>>;
 
 pub enum FlowRequest {
     /// The aggregated derivatives board (cached for a few seconds).
@@ -45,6 +57,19 @@ pub enum FlowRequest {
         pane: PaneId,
         market: Box<Market>,
     },
+    /// A Hyperliquid wallet's positions and recent fills.
+    Wallet {
+        pane: PaneId,
+        address: String,
+    },
+    /// The Hyperliquid leaderboard and vaults (cached).
+    Leaders,
+    /// Positioning across the top wallets (cached).
+    Positioning,
+    /// The shared whale-prints stream.
+    Prints,
+    /// The shared Deribit options-flow tape.
+    OptionFlow,
 }
 
 pub enum FlowResponse {
@@ -54,6 +79,11 @@ pub enum FlowResponse {
     Stream { pane: PaneId, flow: SharedFlow },
     Markets(Result<Vec<Market>, String>),
     MarketDetail { pane: PaneId, detail: Box<Detail> },
+    Wallet { pane: PaneId, address: String, account: Result<Box<Account>, String>, fills: Vec<Fill> },
+    Leaders { leaders: Result<Arc<Vec<Leader>>, String>, vaults: Vec<Vault> },
+    Positioning(Result<Arc<Positioning>, String>),
+    Prints(SharedPrints),
+    OptionFlow(SharedOptionFlow),
 }
 
 #[derive(Default)]
@@ -61,6 +91,23 @@ pub struct FlowShared {
     client: Mutex<Option<PerpsClient>>,
     board: Mutex<Option<(Instant, Arc<Board>)>>,
     tape: Mutex<Weak<Mutex<Tape>>>,
+    leaders: Mutex<Option<CachedLeaders>>,
+    positioning: Mutex<Option<(Instant, Arc<Positioning>)>>,
+    prints: Mutex<Weak<Mutex<tr_flow::prints::Tape>>>,
+    oflow: Mutex<Weak<Mutex<tr_flow::options_flow::Tape>>>,
+}
+
+/// Hand out the shared stream behind `slot`, starting it with `start` if nobody holds it.
+fn shared_stream<T: Default>(slot: &Mutex<Weak<Mutex<T>>>, start: impl FnOnce(Arc<Mutex<T>>)) -> Arc<Mutex<T>> {
+    if let Some(t) = slot.lock().ok().and_then(|w| w.upgrade()) {
+        return t;
+    }
+    let t: Arc<Mutex<T>> = Arc::default();
+    if let Ok(mut w) = slot.lock() {
+        *w = Arc::downgrade(&t);
+    }
+    start(t.clone());
+    t
 }
 
 impl FlowShared {
@@ -207,6 +254,94 @@ pub(super) async fn handle(s: &Shared, req: FlowRequest) {
             };
             send(FlowResponse::Markets(r));
         }
+        FlowRequest::Wallet { pane, address } => {
+            let (account, fills) = if offline {
+                (Ok(Box::new(sample::account(&address))), sample::fills(&address, now() * 1000))
+            } else {
+                match s.flow.client() {
+                    Ok(c) => {
+                        let hl = hyperliquid::Client::new(c.http().clone());
+                        let (a, f) = tokio::join!(hl.account(&address), hl.fills(&address));
+                        (a.map(Box::new).map_err(|e| format!("{e:#}")), f.unwrap_or_default())
+                    }
+                    Err(e) => (Err(e), Vec::new()),
+                }
+            };
+            send(FlowResponse::Wallet { pane, address, account, fills });
+        }
+        FlowRequest::Leaders => {
+            let (leaders, vaults) = leaders(s, offline).await;
+            send(FlowResponse::Leaders { leaders, vaults });
+        }
+        FlowRequest::Positioning => {
+            let cached =
+                s.flow.positioning.lock().ok().and_then(|p| p.clone()).filter(|(t, _)| t.elapsed() < POSITIONING_TTL);
+            let r = match cached {
+                Some((_, p)) => Ok(p),
+                None => match leaders(s, offline).await.0 {
+                    Err(e) => Err(e),
+                    Ok(ls) => {
+                        let wallets: Vec<String> = ls.iter().take(SCAN_WALLETS).map(|l| l.address.clone()).collect();
+                        let p = if offline {
+                            sample::positioning(&wallets)
+                        } else {
+                            match s.flow.client() {
+                                Ok(c) => hyperliquid::Client::new(c.http().clone()).positioning(&wallets).await,
+                                Err(e) => return send(FlowResponse::Positioning(Err(e))),
+                            }
+                        };
+                        let p = Arc::new(p);
+                        if let Ok(mut slot) = s.flow.positioning.lock() {
+                            *slot = Some((Instant::now(), p.clone()));
+                        }
+                        Ok(p)
+                    }
+                },
+            };
+            send(FlowResponse::Positioning(r));
+        }
+        FlowRequest::Prints => {
+            let board = s.flow.board.lock().ok().and_then(|b| b.clone()).map(|(_, b)| b);
+            let tape = shared_stream(&s.flow.prints, |t| {
+                if offline {
+                    tokio::spawn(sample::run_prints(t));
+                } else {
+                    // Follow the most traded Hyperliquid perps (by the board when loaded).
+                    let mut coins: Vec<String> = board
+                        .map(|b| {
+                            let mut v: Vec<_> = b.rows.iter().filter_map(|r| r.venue(Exchange::Hyperliquid)).collect();
+                            v.sort_by(|a, b| b.volume_usd.unwrap_or(0.0).total_cmp(&a.volume_usd.unwrap_or(0.0)));
+                            v.into_iter().take(40).map(|x| x.symbol.clone()).collect()
+                        })
+                        .unwrap_or_default();
+                    if coins.is_empty() {
+                        coins =
+                            ["BTC", "ETH", "SOL", "HYPE", "XRP", "DOGE", "SUI", "kPEPE", "LINK", "AVAX", "ENA", "BNB"]
+                                .map(String::from)
+                                .to_vec();
+                    }
+                    tokio::spawn(tr_flow::prints::run(t, coins));
+                }
+            });
+            send(FlowResponse::Prints(tape));
+        }
+        FlowRequest::OptionFlow => {
+            let client = if offline { None } else { s.flow.client().ok() };
+            let tape = shared_stream(&s.flow.oflow, |t| match client {
+                Some(c) => {
+                    tokio::spawn(tr_flow::options_flow::run(t, c.http().clone()));
+                }
+                None if offline => {
+                    tokio::spawn(sample::run_option_flow(t));
+                }
+                None => {
+                    if let Ok(mut g) = t.lock() {
+                        g.error = Some("HTTP client unavailable".into());
+                    }
+                }
+            });
+            send(FlowResponse::OptionFlow(tape));
+        }
         FlowRequest::MarketDetail { pane, market } => {
             let detail = if offline {
                 sample::detail(&market, now())
@@ -218,5 +353,37 @@ pub(super) async fn handle(s: &Shared, req: FlowRequest) {
             };
             send(FlowResponse::MarketDetail { pane, detail: Box::new(detail) });
         }
+    }
+}
+
+/// The leaderboard (largest accounts first) and open vaults, cached for ten minutes.
+async fn leaders(s: &Shared, offline: bool) -> (Result<Arc<Vec<Leader>>, String>, Vec<Vault>) {
+    if let Some((t, l, v)) = s.flow.leaders.lock().ok().and_then(|x| x.clone())
+        && t.elapsed() < LEADERS_TTL
+    {
+        return (Ok(l), v);
+    }
+    let (l, v) = if offline {
+        (Ok(sample::leaderboard()), Ok(sample::vaults()))
+    } else {
+        match s.flow.client() {
+            Ok(c) => {
+                let hl = hyperliquid::Client::new(c.http().clone());
+                let (l, v) = tokio::join!(hl.leaderboard(), hl.vaults());
+                (l.map_err(|e| format!("{e:#}")), v.map_err(|e| format!("{e:#}")))
+            }
+            Err(e) => (Err(e.clone()), Err(e)),
+        }
+    };
+    let vaults = v.unwrap_or_default();
+    match l {
+        Ok(l) => {
+            let l = Arc::new(l);
+            if let Ok(mut slot) = s.flow.leaders.lock() {
+                *slot = Some((Instant::now(), l.clone(), vaults.clone()));
+            }
+            (Ok(l), vaults)
+        }
+        Err(e) => (Err(e), vaults),
     }
 }

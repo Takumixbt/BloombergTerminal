@@ -1,0 +1,6 @@
+{"jsonrpc":"2.0","result":{"trades":[
+ {"trade_seq":1201,"trade_id":"BTC-339010001","timestamp":1760936390000,"tick_direction":1,"price":0.0215,"mark_price":0.0212,"iv":51.2,"instrument_name":"BTC-25DEC26-80000-C","index_price":67000.0,"direction":"buy","amount":250.0,"block_trade_id":"BLOCK-55012","block_trade_leg_count":1,"contracts":250.0},
+ {"trade_seq":88,"trade_id":"BTC-339010002","timestamp":1760936380000,"tick_direction":0,"price":0.0105,"mark_price":0.0101,"iv":48.7,"instrument_name":"BTC-31OCT26-62000-P","index_price":66990.0,"direction":"sell","amount":12.5,"contracts":12.5},
+ {"trade_seq":41,"trade_id":"ETH-112233","timestamp":1760936370000,"tick_direction":2,"price":0.042,"mark_price":0.041,"iv":62.0,"instrument_name":"ETH-31OCT26-2500-P","index_price":2565.0,"direction":"buy","amount":300.0,"contracts":300.0},
+ {"trade_seq":3,"trade_id":"SOL_USDC-1","timestamp":1760936360000,"tick_direction":0,"price":4.1,"mark_price":4.0,"iv":70.0,"instrument_name":"SOL_USDC-31OCT26-150-C","index_price":152.0,"direction":"buy","amount":10.0,"contracts":10.0}
+],"has_more":true}}

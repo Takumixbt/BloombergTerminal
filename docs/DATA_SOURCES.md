@@ -85,6 +85,31 @@ backfilled), and kept in memory only.
 | Price history per outcome | Polymarket CLOB | `clob.polymarket.com/prices-history` |
 | Order book | Polymarket CLOB | `clob.polymarket.com/book` |
 
+## Hyperliquid trader intelligence (`HLW`, `HLTOP`, `HLPOS`, `PRINTS`) — Hyperdash-style
+
+Hyperliquid runs its order book on its own chain, so every account's positions are public.
+
+| What | Endpoint | Notes |
+|---|---|---|
+| A wallet's positions, margin, liquidation prices | `POST api.hyperliquid.xyz/info {"type":"clearinghouseState","user":…}` | Refreshed every 30 s while shown |
+| A wallet's recent fills | `POST api.hyperliquid.xyz/info {"type":"userFills","user":…}` | Up to the 2,000 most recent |
+| Leaderboard (account value; PnL, ROI, volume by window) | `GET stats-data.hyperliquid.xyz/Mainnet/leaderboard` | The list the Hyperliquid app shows; cached 10 min |
+| Vaults (name, TVL, APR) | `GET stats-data.hyperliquid.xyz/Mainnet/vaults` | Cached 10 min |
+| Positioning, cohorts, liquidation map | `clearinghouseState` for the 200 largest leaderboard accounts | 6 requests at a time, every 3 min; describes those wallets, not the whole market |
+| Whale prints | `wss://api.hyperliquid.xyz/ws`, `trades` for the 40 most traded perps | Each trade carries `users: [buyer, seller]`; prints of $25K+ are kept |
+
+The `stats-data` endpoints are what Hyperliquid's own web app uses rather than a documented
+API, so they may change.
+
+## Crypto options flow (`OFLOW`) — Gambit-style
+
+| What | Endpoint | Notes |
+|---|---|---|
+| BTC and ETH option trades | `GET www.deribit.com/api/v2/public/get_last_trades_by_currency?kind=option` | Last 1,000 per currency, polled every 15 s and merged; `block_trade_id` marks block trades; premium = price × amount × index |
+
+There is no free source for US equity options flow ("unusual options activity"); Yahoo's
+chains (`OMON`) show volume and open interest per contract instead.
+
 ## Things to know
 
 - **Geo-restrictions.** Binance (`fapi.binance.com`, `api.binance.com`) refuses connections from

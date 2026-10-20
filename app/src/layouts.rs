@@ -143,6 +143,34 @@ pub enum PaneSettings {
         #[serde(default)]
         query: String,
     },
+    /// A Hyperliquid wallet, with the saved wallets list.
+    Wallet {
+        #[serde(default)]
+        address: Option<String>,
+        #[serde(default)]
+        saved: Vec<crate::app::SavedWallet>,
+    },
+    /// Hyperliquid leaderboard (or vaults).
+    Leaders {
+        #[serde(default)]
+        vaults: bool,
+    },
+    /// Positioning of the top Hyperliquid wallets in one coin.
+    HlPositioning {
+        coin: String,
+    },
+    /// Large Hyperliquid trades.
+    Prints {
+        #[serde(default)]
+        coin: Option<String>,
+        #[serde(default)]
+        min_usd: f64,
+    },
+    /// Deribit options flow.
+    OptionFlow {
+        #[serde(default)]
+        currency: Option<String>,
+    },
 }
 
 fn minute() -> i64 {
@@ -300,6 +328,23 @@ impl LayoutDoc {
             p.link = Some(Link::Blue);
         }
         doc
+    }
+
+    /// Name of the built-in Hyperliquid workspace, created on first launch.
+    pub const HYPERLIQUID_DESK: &'static str = "Hyperliquid Desk";
+
+    /// Leaderboard, wallet tracker, whale prints, top-wallet positioning, options flow and
+    /// liquidations.
+    pub fn hyperliquid_workspace() -> LayoutDoc {
+        let panes = vec![
+            PaneSettings::Leaders { vaults: false },
+            PaneSettings::Wallet { address: None, saved: Vec::new() },
+            PaneSettings::Prints { coin: None, min_usd: 100_000.0 },
+            PaneSettings::HlPositioning { coin: "BTC".into() },
+            PaneSettings::OptionFlow { currency: None },
+            PaneSettings::Liquidations { coin: None, min_usd: 0.0 },
+        ];
+        Self::preset(Self::HYPERLIQUID_DESK, Layout::Grid3x2, panes)
     }
 
     pub fn preset(name: &str, layout: Layout, panes: Vec<PaneSettings>) -> LayoutDoc {
@@ -493,6 +538,26 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn built_in_crypto_desks_round_trip() {
+        for doc in
+            [LayoutDoc::crypto_workspace(&crate::prefs::PanelDefaults::default()), LayoutDoc::hyperliquid_workspace()]
+        {
+            assert_eq!(doc.panes.len(), 6);
+            let back = LayoutDoc::from_json(&doc.to_json()).unwrap();
+            assert_eq!(back, doc, "{}", doc.name);
+        }
+        let w = PaneSettings::Wallet {
+            address: Some("0x31ca8395cf837de08b24da3f660e77761dfb974b".into()),
+            saved: vec![crate::app::SavedWallet { address: "0xabc".into(), label: "me".into() }],
+        };
+        let json = serde_json::to_string(&w).unwrap();
+        assert_eq!(serde_json::from_str::<PaneSettings>(&json).unwrap(), w);
+        // Older files without the new optional fields still load.
+        let old: PaneSettings = serde_json::from_str(r#"{"Prints":{}}"#).unwrap();
+        assert_eq!(old, PaneSettings::Prints { coin: None, min_usd: 0.0 });
+    }
     use crate::dock::Zone;
     use crate::prefs::PanelDefaults;
 

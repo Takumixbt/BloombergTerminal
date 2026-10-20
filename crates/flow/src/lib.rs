@@ -9,6 +9,10 @@
 //! - [`orderflow`]: a live trade and depth stream per market (Binance USDⓈ-M futures or
 //!   Hyperliquid) feeding an order book heatmap, footprint candles and CVD ([`orderflow::Flow`]).
 //! - [`polymarket`]: prediction markets from Polymarket's Gamma and CLOB APIs.
+//! - [`hyperliquid`]: on-chain trader intelligence: any wallet's positions and fills, the
+//!   leaderboard and vaults, and positioning of the top traders (cohorts, liquidation levels).
+//! - [`prints`]: large Hyperliquid trades with the wallets on both sides.
+//! - [`options_flow`]: Deribit BTC/ETH option trades (premium, IV, blocks) and summaries.
 //! - [`sample`]: deterministic offline data for all of the above (`TR_PROVIDER=sample`).
 //!
 //! No API keys are needed. Every parser is a pure function over the venue's JSON, tested
@@ -16,10 +20,13 @@
 
 pub mod deribit;
 pub mod history;
+pub mod hyperliquid;
 pub mod liq;
+pub mod options_flow;
 pub mod orderflow;
 pub mod perps;
 pub mod polymarket;
+pub mod prints;
 pub mod sample;
 pub mod venue;
 

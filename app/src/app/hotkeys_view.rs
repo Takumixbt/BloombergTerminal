@@ -283,6 +283,20 @@ impl TerminalApp {
                     ),
                     (&["FOOT", "FOOT SOL", "CVD"], "Footprint candles: buy × sell volume at price, delta, CVD"),
                     (&["PRED", "PRED fed"], "Prediction markets (Polymarket): odds, history, order book"),
+                    (
+                        &["HLW 0x…", "WALLET"],
+                        "Hyperliquid wallet: positions, liq prices, PnL, fills; saved wallets with change alerts",
+                    ),
+                    (&["HLTOP", "VAULTS"], "Hyperliquid leaderboard (PnL, ROI, volume by window) and vaults"),
+                    (
+                        &["HLPOS", "HLPOS ETH", "WHALES"],
+                        "Top-wallet positioning: long/short, size cohorts, liquidation levels, largest positions",
+                    ),
+                    (&["PRINTS", "PRINTS BTC"], "Whale prints: large Hyperliquid trades with taker/maker wallets"),
+                    (
+                        &["OFLOW", "OFLOW ETH"],
+                        "Options flow (Deribit): premium, IV, blocks, put/call, strikes, expiries",
+                    ),
                 ],
             );
 
