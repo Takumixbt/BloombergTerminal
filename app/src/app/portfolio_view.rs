@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use egui::{Align2, Color32, Rect, RichText, Sense, Ui, pos2, vec2};
-use tr_broker::{Account, Portfolio, Position};
-use tr_data::Quote;
+use hd_broker::{Account, Portfolio, Position};
+use hd_data::Quote;
 
 use super::broker::{BrokerMode, BrokerState, PortfolioPane, PosSort};
 use crate::command::PortView;
@@ -231,8 +231,8 @@ fn note(ui: &mut Ui, s: impl Into<String>) {
 
 /// Buy/Sell items for a security row (the ticket says whether trading is enabled).
 fn trade_items(ui: &mut Ui, key: &str, account: Option<&str>, held: Option<f64>, out: &mut Vec<PortAction>) {
-    let sec = tr_data::security(key);
-    if !matches!(sec.class, tr_core::AssetClass::Equity | tr_core::AssetClass::Etf) {
+    let sec = hd_data::security(key);
+    if !matches!(sec.class, hd_core::AssetClass::Equity | hd_core::AssetClass::Etf) {
         return;
     }
     let account = account.map(str::to_string);
@@ -258,8 +258,8 @@ fn security_menu(ui: &mut Ui, key: &str, symbol: &str, out: &mut Vec<PortAction>
         out.push(PortAction::Core(Action::OpenChart(key.to_string())));
         ui.close();
     }
-    let sec = tr_data::security(key);
-    if matches!(sec.class, tr_core::AssetClass::Equity | tr_core::AssetClass::Etf)
+    let sec = hd_data::security(key);
+    if matches!(sec.class, hd_core::AssetClass::Equity | hd_core::AssetClass::Etf)
         && ui.button("Option Chain (OMON)").clicked()
     {
         out.push(PortAction::Options(key.to_string()));
@@ -439,7 +439,7 @@ fn toolbar(
     // A security filter (`AAPL POS`) on its own line, so it never collides with the status.
     if let Some(s) = pane.symbol.clone() {
         ui.horizontal(|ui| {
-            let t = tr_data::security(&s).ticker;
+            let t = hd_data::security(&s).ticker;
             note(ui, format!("Showing {t} only"));
             if ui.small_button("Show all").on_hover_text("Remove the security filter").clicked() {
                 pane.symbol = None;
@@ -454,7 +454,7 @@ fn setup_screen(ui: &mut Ui, b: &BrokerState, out: &mut Vec<PortAction>) {
     ui.add_space(dp(4.0));
     note(
         ui,
-        "terminal-rs reads accounts, balances, positions, orders and activity through SnapTrade. Access is read-only \
+        "Hyperdesk reads accounts, balances, positions, orders and activity through SnapTrade. Access is read-only \
          unless you turn on trading in Settings › Trading.",
     );
     ui.add_space(dp(8.0));
@@ -498,17 +498,17 @@ fn setup_screen(ui: &mut Ui, b: &BrokerState, out: &mut Vec<PortAction>) {
         if ui.button(RichText::new("Open Brokerage Settings…").strong()).clicked() {
             out.push(PortAction::Setup);
         }
-        if ui.button("Get API Keys").on_hover_text(tr_broker::snaptrade::DASHBOARD_URL).clicked() {
-            out.push(PortAction::Open(tr_broker::snaptrade::DASHBOARD_URL));
+        if ui.button("Get API Keys").on_hover_text(hd_broker::snaptrade::DASHBOARD_URL).clicked() {
+            out.push(PortAction::Open(hd_broker::snaptrade::DASHBOARD_URL));
         }
-        if ui.button("Documentation").on_hover_text(tr_broker::snaptrade::DOCS_URL).clicked() {
-            out.push(PortAction::Open(tr_broker::snaptrade::DOCS_URL));
+        if ui.button("Documentation").on_hover_text(hd_broker::snaptrade::DOCS_URL).clicked() {
+            out.push(PortAction::Open(hd_broker::snaptrade::DOCS_URL));
         }
     });
     ui.add_space(dp(8.0));
     note(
         ui,
-        "Or set SNAPTRADE_CLIENT_ID, SNAPTRADE_CONSUMER_KEY, SNAPTRADE_USER_ID and SNAPTRADE_USER_SECRET. TR_BROKER=sample shows a simulated portfolio.",
+        "Or set SNAPTRADE_CLIENT_ID, SNAPTRADE_CONSUMER_KEY, SNAPTRADE_USER_ID and SNAPTRADE_USER_SECRET. HD_BROKER=sample shows a simulated portfolio.",
     );
 }
 
@@ -729,8 +729,8 @@ fn position_row(
         (None, _) => resp.on_hover_text("Not available as a terminal market key"),
     };
     if let Some(k) = &key {
-        let tradable = matches!(p.kind, tr_broker::InstrumentKind::Stock | tr_broker::InstrumentKind::Etf)
-            && matches!(tr_data::security(k).class, tr_core::AssetClass::Equity | tr_core::AssetClass::Etf);
+        let tradable = matches!(p.kind, hd_broker::InstrumentKind::Stock | hd_broker::InstrumentKind::Etf)
+            && matches!(hd_data::security(k).class, hd_core::AssetClass::Equity | hd_core::AssetClass::Etf);
         let mut pills = Vec::new();
         if tradable {
             pills.extend(widgets::buy_sell_pills());
@@ -758,7 +758,7 @@ fn position_row(
             None => {}
         }
         resp.context_menu(|ui| {
-            if p.kind != tr_broker::InstrumentKind::Option {
+            if p.kind != hd_broker::InstrumentKind::Option {
                 trade_items(ui, k, Some(&p.account_id), Some(p.units), out);
                 if tradable && p.units > 0.0 {
                     if ui.button(format!("Close Position ({} {})…", qty(p.units), p.short_label())).clicked() {
@@ -951,7 +951,7 @@ fn orders(ui: &mut Ui, pane: &mut PortfolioPane, pf: &Portfolio, out: &mut Vec<P
                 ui,
                 format!(
                     "Last {} days · hover or right-click an open order to cancel it",
-                    tr_broker::snaptrade::ORDER_DAYS
+                    hd_broker::snaptrade::ORDER_DAYS
                 ),
             );
         }
@@ -1058,7 +1058,7 @@ fn orders(ui: &mut Ui, pane: &mut PortfolioPane, pf: &Portfolio, out: &mut Vec<P
 fn activity(ui: &mut Ui, pane: &mut PortfolioPane, pf: &Portfolio, out: &mut Vec<PortAction>) {
     note(
         ui,
-        format!("Last {} days: trades, dividends, interest, transfers and fees", tr_broker::snaptrade::ACTIVITY_DAYS),
+        format!("Last {} days: trades, dividends, interest, transfers and fees", hd_broker::snaptrade::ACTIVITY_DAYS),
     );
     let sel = selected(pane);
     let list: Vec<_> =
@@ -1175,8 +1175,8 @@ mod tests {
     fn renders_every_view_without_panicking() {
         let ctx = egui::Context::default();
         let mut b = BrokerState::load(true);
-        b.creds = tr_broker::Credentials::default();
-        b.portfolio = Some(Box::new(tr_broker::sample::portfolio()));
+        b.creds = hd_broker::Credentials::default();
+        b.portfolio = Some(Box::new(hd_broker::sample::portfolio()));
         let quotes = HashMap::new();
         for view in PortView::ALL {
             let mut pane = PortfolioPane::new(view);
@@ -1192,7 +1192,7 @@ mod tests {
             out.textures_delta.clear();
         }
         // The demo account.
-        let demo = tr_broker::demo::DemoBook::new(chrono::Utc::now()).portfolio();
+        let demo = hd_broker::demo::DemoBook::new(chrono::Utc::now()).portfolio();
         for view in PortView::ALL {
             let mut pane = PortfolioPane::new(view);
             let mut out = ctx.run_ui(Default::default(), |ui| {

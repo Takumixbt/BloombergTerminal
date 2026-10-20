@@ -148,12 +148,12 @@ pub fn ind() -> Color32 {
     if palette().dark { Color32::from_rgb(191, 90, 242) } else { Color32::from_rgb(140, 50, 200) }
 }
 
-pub fn party_color(p: tr_congress::Party) -> Color32 {
+pub fn party_color(p: hd_congress::Party) -> Color32 {
     match p {
-        tr_congress::Party::Democrat => dem(),
-        tr_congress::Party::Republican => rep(),
-        tr_congress::Party::Independent => ind(),
-        tr_congress::Party::Unknown => muted(),
+        hd_congress::Party::Democrat => dem(),
+        hd_congress::Party::Republican => rep(),
+        hd_congress::Party::Independent => ind(),
+        hd_congress::Party::Unknown => muted(),
     }
 }
 

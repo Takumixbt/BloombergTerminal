@@ -1,12 +1,12 @@
 //! Run one live refresh against the official sources into a SQLite file.
-//! `cargo run -p tr-congress --example ingest -- congress.sqlite3 [max_new_per_chamber]`
+//! `cargo run -p hd-congress --example ingest -- congress.sqlite3 [max_new_per_chamber]`
+use hd_congress::Db;
+use hd_congress::refresh::{HttpSource, RefreshConfig, refresh};
 use tokio::sync::Mutex;
-use tr_congress::Db;
-use tr_congress::refresh::{HttpSource, RefreshConfig, refresh};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt().with_env_filter("info,tr_congress=debug").init();
+    tracing_subscriber::fmt().with_env_filter("info,hd_congress=debug").init();
     let mut args = std::env::args().skip(1);
     let path = args.next().unwrap_or_else(|| "congress.sqlite3".into());
     let db = Db::open(&path)?;

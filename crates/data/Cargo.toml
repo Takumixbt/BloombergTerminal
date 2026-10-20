@@ -1,11 +1,11 @@
 [package]
-name = "tr-data"
+name = "hd-data"
 description = "Pluggable market-data providers (Alpaca, Yahoo, sample) and a SQLite bar cache"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-tr-core.workspace = true
+hd-core.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 serde.workspace = true

@@ -27,11 +27,11 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use egui::{Color32, Event, Key, Modifiers, Rect, Ui, UiBuilder, pos2, vec2};
+use hd_chart::drawings::Tool;
+use hd_congress::Trade;
+use hd_congress::db::{Alert, PoliticianSummary};
+use hd_data::{NewsItem, OrderBook, Quote, SearchHit, YieldCurves};
 use serde::{Deserialize, Serialize};
-use tr_chart::drawings::Tool;
-use tr_congress::Trade;
-use tr_congress::db::{Alert, PoliticianSummary};
-use tr_data::{NewsItem, OrderBook, Quote, SearchHit, YieldCurves};
 
 use crate::anim;
 use crate::chart_view::ChartState;
@@ -102,10 +102,10 @@ pub struct OptionsPane {
     pub symbol: String,
     /// Selected expiration (`None` = nearest).
     pub expiration: Option<i64>,
-    pub chain: Option<Box<tr_data::OptionChain>>,
+    pub chain: Option<Box<hd_data::OptionChain>>,
     /// Greeks per call and put, aligned with the chain's contracts.
-    pub call_greeks: Vec<Option<tr_core::options::Greeks>>,
-    pub put_greeks: Vec<Option<tr_core::options::Greeks>>,
+    pub call_greeks: Vec<Option<hd_core::options::Greeks>>,
+    pub put_greeks: Vec<Option<hd_core::options::Greeks>>,
     /// Risk-free rate used for the greeks.
     pub rate: f64,
     pub error: Option<String>,
@@ -134,11 +134,11 @@ impl OptionsPane {
     }
 
     /// Store a chain and derive greeks from each contract's implied volatility.
-    pub fn set_chain(&mut self, chain: Box<tr_data::OptionChain>, rate: f64, now: i64) {
+    pub fn set_chain(&mut self, chain: Box<hd_data::OptionChain>, rate: f64, now: i64) {
         // Expiry at the 16:00 New York close (≈ 20:00 UTC) of the expiration date.
         let t = ((chain.expiration + 20 * 3600 - now) as f64 / (365.0 * 86_400.0)).max(0.5 / 365.0);
-        let g = |call: bool, c: &tr_data::OptionContract| {
-            tr_core::options::black_scholes(call, chain.spot, c.strike, t, rate, chain.dividend_yield, c.iv?)
+        let g = |call: bool, c: &hd_data::OptionContract| {
+            hd_core::options::black_scholes(call, chain.spot, c.strike, t, rate, chain.dividend_yield, c.iv?)
                 .map(|(_, g)| g)
         };
         self.call_greeks = chain.calls.iter().map(|c| g(true, c)).collect();
@@ -187,7 +187,7 @@ impl BookPane {
 impl PaneKind {
     /// Short tab title.
     fn tab_title(&self) -> String {
-        let short = |s: &str| tr_data::security(s).ticker;
+        let short = |s: &str| hd_data::security(s).ticker;
         match self {
             PaneKind::Chart(c) => short(&c.symbol),
             PaneKind::Feed { .. } => "Congress".into(),
@@ -225,7 +225,7 @@ impl PaneKind {
             },
             PaneKind::Predict(_) => "Predictions".into(),
             PaneKind::Wallet(w) => {
-                w.address.as_deref().map_or_else(|| "Wallet".into(), tr_flow::hyperliquid::short_address)
+                w.address.as_deref().map_or_else(|| "Wallet".into(), hd_flow::hyperliquid::short_address)
             }
             PaneKind::Leaders(l) if l.vaults => "HL Vaults".into(),
             PaneKind::Leaders(_) => "HL Leaderboard".into(),
@@ -420,19 +420,19 @@ impl PaneKind {
     }
 
     fn hl_positioning(coin: &str) -> PaneKind {
-        PaneKind::HlPositioning(Box::new(hl_view::PositioningPane { coin: tr_flow::venue::coin_of_key(coin) }))
+        PaneKind::HlPositioning(Box::new(hl_view::PositioningPane { coin: hd_flow::venue::coin_of_key(coin) }))
     }
 
     fn prints(coin: Option<String>, min_usd: f64) -> PaneKind {
         PaneKind::Prints(Box::new(hl_view::PrintsPane {
-            coin: coin.map(|c| tr_flow::venue::coin_of_key(&c)),
+            coin: coin.map(|c| hd_flow::venue::coin_of_key(&c)),
             min_usd: if min_usd > 0.0 { min_usd } else { 100_000.0 },
         }))
     }
 
     fn option_flow(currency: Option<String>) -> PaneKind {
         PaneKind::OptionFlow(Box::new(hl_view::OptionFlowPane {
-            currency: currency.map(|c| tr_flow::venue::coin_of_key(&c)).filter(|c| tr_flow::deribit::supported(c)),
+            currency: currency.map(|c| hd_flow::venue::coin_of_key(&c)).filter(|c| hd_flow::deribit::supported(c)),
             min_premium: 0.0,
             blocks_only: false,
             window_min: 240,
@@ -615,7 +615,7 @@ pub struct TerminalApp {
     /// The window is see-through behind the sidebar (macOS vibrancy).
     vibrancy: bool,
     /// Measured macOS title bar geometry (polled; changes with full screen).
-    chrome: Option<tr_macos::Chrome>,
+    chrome: Option<hd_macos::Chrome>,
     last_chrome_poll: Option<Instant>,
     /// Brokerage integration (SnapTrade credentials and the loaded portfolio).
     broker: broker::BrokerState,
@@ -637,7 +637,7 @@ fn keys_from_words(words: &[String]) -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < tokens.len() {
-        match tr_core::Security::resolve_tokens(&tokens[i..]) {
+        match hd_core::Security::resolve_tokens(&tokens[i..]) {
             Some((sec, used)) => {
                 out.push(sec.key());
                 i += used;
@@ -659,7 +659,7 @@ fn prefs_path() -> std::path::PathBuf {
 impl TerminalApp {
     pub fn new(ctx: &egui::Context, worker: Worker, provider: String) -> Self {
         let system_accent =
-            tr_macos::accent_color().map_or(theme::DEFAULT_ACCENT, |[r, g, b]| Color32::from_rgb(r, g, b));
+            hd_macos::accent_color().map_or(theme::DEFAULT_ACCENT, |[r, g, b]| Color32::from_rgb(r, g, b));
         let mut prefs = Prefs::load(&prefs_path());
         let theme_store = crate::themes::ThemeStore::new(data_dir().join("themes"));
         let mut themes = theme_store.load_all();
@@ -674,7 +674,7 @@ impl TerminalApp {
             themes.push(t);
             let _ = prefs.save(&prefs_path());
         }
-        if let Ok(v) = std::env::var("TR_THEME") {
+        if let Ok(v) = std::env::var("HD_THEME") {
             prefs.appearance.theme = match v.to_ascii_lowercase().as_str() {
                 "light" => prefs.appearance.light_theme.clone(),
                 "dark" => prefs.appearance.dark_theme.clone(),
@@ -746,7 +746,7 @@ impl TerminalApp {
             last_save: Instant::now(),
             started: Instant::now(),
             smoke_done: false,
-            show_perf: std::env::var_os("TR_FPS").is_some(),
+            show_perf: std::env::var_os("HD_FPS").is_some(),
             perf_cpu_ms: 0.0,
             perf_dt_ms: 0.0,
             last_frame: None,
@@ -765,7 +765,7 @@ impl TerminalApp {
         if let Some(s) = &settings {
             if !s.watchlist.is_empty() {
                 // Older settings stored bare tickers; normalise to market keys.
-                app.watchlist = s.watchlist.iter().map(|w| tr_data::security(w).key()).collect();
+                app.watchlist = s.watchlist.iter().map(|w| hd_data::security(w).key()).collect();
                 app.watchlist.dedup();
             }
             app.sidebar_open = s.sidebar;
@@ -838,7 +838,7 @@ impl TerminalApp {
                 }
                 Action::OpenProfile(q) => self.open_panel(PaneKind::Profile { query: q, data: None, loading: true }),
                 Action::AddToWatchlist(s) => {
-                    let key = tr_data::security(&s).key();
+                    let key = hd_data::security(&s).key();
                     if !self.watchlist.contains(&key) {
                         self.status = format!("Added {key} to the watchlist");
                         self.watchlist.push(key);
@@ -894,23 +894,23 @@ impl TerminalApp {
             }
             Command::SymbolFunction(s, Function::Portfolio(view, arg)) => self.portfolio_command(view, &arg, Some(s)),
             Command::SymbolFunction(s, f @ (Function::Deriv(None) | Function::Liquidations(None))) => {
-                let coin = Some(tr_flow::venue::coin_of_key(&s));
+                let coin = Some(hd_flow::venue::coin_of_key(&s));
                 self.apply(match f {
                     Function::Deriv(_) => Function::Deriv(coin),
                     _ => Function::Liquidations(coin),
                 });
             }
             Command::SymbolFunction(s, Function::HlPositioning(None)) => {
-                self.apply(Function::HlPositioning(Some(tr_flow::venue::coin_of_key(&s))));
+                self.apply(Function::HlPositioning(Some(hd_flow::venue::coin_of_key(&s))));
             }
             Command::SymbolFunction(s, Function::Prints(None)) => {
-                self.apply(Function::Prints(Some(tr_flow::venue::coin_of_key(&s))));
+                self.apply(Function::Prints(Some(hd_flow::venue::coin_of_key(&s))));
             }
             Command::SymbolFunction(s, Function::OptionFlow(None)) => {
-                self.apply(Function::OptionFlow(Some(tr_flow::venue::coin_of_key(&s))));
+                self.apply(Function::OptionFlow(Some(hd_flow::venue::coin_of_key(&s))));
             }
             Command::SymbolFunction(s, Function::OrderFlow { view, venue, coin: None }) => {
-                self.apply(Function::OrderFlow { view, venue, coin: Some(tr_flow::venue::coin_of_key(&s)) });
+                self.apply(Function::OrderFlow { view, venue, coin: Some(hd_flow::venue::coin_of_key(&s)) });
             }
             Command::SymbolFunction(s, Function::Trade(mut t)) => {
                 t.symbol = Some(s);
@@ -1019,12 +1019,12 @@ impl TerminalApp {
             }
             Function::OrderFlow { view, venue, coin } => {
                 let coin = coin.unwrap_or_else(|| self.focused_coin());
-                let venue = venue.unwrap_or(tr_flow::Exchange::Binance);
+                let venue = venue.unwrap_or(hd_flow::Exchange::Binance);
                 self.open_panel(PaneKind::Flow(Box::new(flow_view::FlowPane::new(&coin, venue, view, 60))));
             }
             Function::Predict(q) => self.open_panel(PaneKind::Predict(Box::new(flow_view::PredPane::new(&q)))),
             Function::HlWallet(addr) => {
-                let addr = tr_flow::hyperliquid::parse_address(&addr);
+                let addr = hd_flow::hyperliquid::parse_address(&addr);
                 // Reuse the focused (or any) wallet pane so its saved list stays in one place.
                 let focus = self.focus;
                 let target = self
@@ -1273,7 +1273,7 @@ impl TerminalApp {
     /// Freshness line for the Congress feed: last check, newest filing, next check.
     fn congress_freshness(&self) -> String {
         let newest = self.latest.iter().map(|t| t.filed_date).max();
-        let minutes = std::env::var("TR_CONGRESS_REFRESH_MIN")
+        let minutes = std::env::var("HD_CONGRESS_REFRESH_MIN")
             .ok()
             .and_then(|v| v.parse::<i64>().ok())
             .unwrap_or(crate::worker::CONGRESS_REFRESH_MIN as i64);
@@ -1595,11 +1595,11 @@ impl TerminalApp {
 #[cfg(target_os = "macos")]
 fn style_native_window(frame: &eframe::Frame, vibrancy: bool) -> bool {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-    let vibrancy = vibrancy && std::env::var("TR_VIBRANCY").map_or(true, |v| v != "0");
+    let vibrancy = vibrancy && std::env::var("HD_VIBRANCY").map_or(true, |v| v != "0");
     let Ok(handle) = frame.window_handle() else { return false };
     let RawWindowHandle::AppKit(h) = handle.as_raw() else { return false };
     // SAFETY: called on the main thread (eframe runs `ui` there) with a live NSView.
-    let ok = unsafe { tr_macos::style_window(h.ns_view.as_ptr(), vibrancy) };
+    let ok = unsafe { hd_macos::style_window(h.ns_view.as_ptr(), vibrancy) };
     tracing::info!("macOS window chrome applied: {ok} (vibrancy {vibrancy})");
     ok && vibrancy
 }
@@ -1611,16 +1611,16 @@ fn style_native_window(_frame: &eframe::Frame, _vibrancy: bool) -> bool {
 
 /// The main window's live title bar geometry (macOS).
 #[cfg(target_os = "macos")]
-fn native_chrome(frame: &eframe::Frame) -> Option<tr_macos::Chrome> {
+fn native_chrome(frame: &eframe::Frame) -> Option<hd_macos::Chrome> {
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
     let handle = frame.window_handle().ok()?;
     let RawWindowHandle::AppKit(h) = handle.as_raw() else { return None };
     // SAFETY: main thread, live NSView owned by the window.
-    unsafe { tr_macos::chrome_metrics(h.ns_view.as_ptr()) }
+    unsafe { hd_macos::chrome_metrics(h.ns_view.as_ptr()) }
 }
 
 #[cfg(not(target_os = "macos"))]
-fn native_chrome(_frame: &eframe::Frame) -> Option<tr_macos::Chrome> {
+fn native_chrome(_frame: &eframe::Frame) -> Option<hd_macos::Chrome> {
     None
 }
 
@@ -1649,10 +1649,10 @@ impl eframe::App for TerminalApp {
             self.last_chrome_poll = Some(Instant::now());
         }
         if self.last_accent_poll.is_none_or(|t| t.elapsed() > Duration::from_secs(3)) {
-            if let Some([r, g, b]) = tr_macos::accent_color() {
+            if let Some([r, g, b]) = hd_macos::accent_color() {
                 self.system_accent = Color32::from_rgb(r, g, b);
             }
-            anim::set_reduced(tr_macos::reduce_motion());
+            anim::set_reduced(hd_macos::reduce_motion());
             self.last_accent_poll = Some(Instant::now());
         }
         self.system_theme = ctx.system_theme();
@@ -1725,8 +1725,8 @@ impl eframe::App for TerminalApp {
         self.trading_windows(&ctx);
         self.toasts(&ctx);
 
-        // TR_SMOKE_SECS=N: render for N seconds, log frame stats and quit (CI smoke test).
-        if let Some(secs) = std::env::var("TR_SMOKE_SECS").ok().and_then(|v| v.parse::<f64>().ok()) {
+        // HD_SMOKE_SECS=N: render for N seconds, log frame stats and quit (CI smoke test).
+        if let Some(secs) = std::env::var("HD_SMOKE_SECS").ok().and_then(|v| v.parse::<f64>().ok()) {
             ctx.request_repaint();
             if !self.smoke_done && self.started.elapsed().as_secs_f64() > secs {
                 self.smoke_done = true;

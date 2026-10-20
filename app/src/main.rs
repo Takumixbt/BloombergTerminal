@@ -1,5 +1,5 @@
-//! terminal-rs: a keyboard-driven, Bloomberg-style market terminal with GPU charts and
-//! congressional (STOCK Act) trade tracking.
+//! Hyperdesk: a keyboard-driven market terminal with GPU charts, crypto derivatives and order
+//! flow, Hyperliquid trader intelligence, prediction markets and congressional trade tracking.
 
 // Release builds on Windows are GUI apps (no console window); logs go to a file instead.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
@@ -41,20 +41,20 @@ fn main() -> eframe::Result {
     }
 
     // MSAA smooths chart lines and drawings; 4x by default on macOS and Windows, where a real
-    // GPU is the norm (TR_MSAA overrides).
-    let msaa: u16 = std::env::var("TR_MSAA")
+    // GPU is the norm (HD_MSAA overrides).
+    let msaa: u16 = std::env::var("HD_MSAA")
         .ok()
         .and_then(|v| v.parse().ok())
         .filter(|n| matches!(n, 1 | 2 | 4 | 8))
         .unwrap_or(if cfg!(any(target_os = "macos", windows)) { 4 } else { 1 });
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title("Terminal")
-        .with_app_id("terminal-rs")
+        .with_title("Hyperdesk")
+        .with_app_id("hyperdesk")
         .with_icon(eframe::icon_data::from_png_bytes(include_bytes!("../assets/icon.png")).expect("app icon"))
         .with_inner_size([1600.0, 960.0])
         .with_min_inner_size([900.0, 560.0]);
     if cfg!(target_os = "macos") {
-        // Content extends under a transparent title bar; tr-macos adds the unified
+        // Content extends under a transparent title bar; hd-macos adds the unified
         // toolbar (inset traffic lights) and sidebar vibrancy on the first frame.
         viewport = viewport
             .with_transparent(true)
@@ -69,16 +69,16 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native(
-        "terminal-rs",
+        "hyperdesk",
         options,
         Box::new(move |cc| {
-            let rs = cc.wgpu_render_state.as_ref().ok_or("terminal-rs requires the wgpu renderer")?;
-            rs.renderer.write().callback_resources.insert(tr_chart::gpu::ChartRenderer::new(
+            let rs = cc.wgpu_render_state.as_ref().ok_or("Hyperdesk requires the wgpu renderer")?;
+            rs.renderer.write().callback_resources.insert(hd_chart::gpu::ChartRenderer::new(
                 &rs.device,
                 rs.target_format,
                 u32::from(msaa),
             ));
-            let provider = tr_data::from_env();
+            let provider = hd_data::from_env();
             let name = provider.name().to_string();
             let worker = worker::Worker::spawn(cc.egui_ctx.clone(), provider)?;
             tracing::info!("window + GPU ready in {:?} (adapter: {})", t0.elapsed(), rs.adapter.get_info().name);

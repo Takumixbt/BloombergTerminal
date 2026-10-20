@@ -1,6 +1,6 @@
 [package]
-name = "tr-core"
-description = "Core market types, timeframes, indicators and sample data for terminal-rs"
+name = "hd-core"
+description = "Core market types, timeframes, indicators and sample data for Hyperdesk"
 version.workspace = true
 edition.workspace = true
 

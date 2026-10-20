@@ -1,6 +1,6 @@
 [package]
-name = "tr-congress"
-description = "STOCK Act disclosure ingest (Senate eFD + House Clerk PTRs) for terminal-rs"
+name = "hd-congress"
+description = "STOCK Act disclosure ingest (Senate eFD + House Clerk PTRs) for Hyperdesk"
 version.workspace = true
 edition.workspace = true
 

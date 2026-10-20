@@ -1,5 +1,5 @@
 [package]
-name = "tr-flow"
+name = "hd-flow"
 description = "Crypto derivatives (funding, open interest, basis, liquidations), order flow (book heatmap, footprint, CVD) and prediction markets from free public venue APIs"
 version.workspace = true
 edition.workspace = true

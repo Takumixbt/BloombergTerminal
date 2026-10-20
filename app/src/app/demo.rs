@@ -9,9 +9,9 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use tr_broker::demo::{DemoBook, Event, STARTING_CASH};
-use tr_broker::trading::OrderRequest;
-use tr_broker::{InstrumentKind, Order, Portfolio};
+use hd_broker::demo::{DemoBook, Event, STARTING_CASH};
+use hd_broker::trading::OrderRequest;
+use hd_broker::{InstrumentKind, Order, Portfolio};
 
 use super::TerminalApp;
 use crate::prefs::AccountMode;
@@ -41,7 +41,7 @@ pub fn demo_path() -> PathBuf {
 
 /// Terminal market key for a demo symbol (`AAPL` → `AAPL US Equity`).
 pub fn market_key(symbol: &str) -> Option<String> {
-    tr_broker::model::market_key(InstrumentKind::Stock, symbol, "USD")
+    hd_broker::model::market_key(InstrumentKind::Stock, symbol, "USD")
 }
 
 impl DemoState {
@@ -184,9 +184,9 @@ impl TerminalApp {
             Ok(o) => {
                 self.demo.changed();
                 let msg = match o.status.as_str() {
-                    "EXECUTED" => tr_broker::demo::fill_message(o),
-                    "CANCELED" => format!("{} cancelled (not fillable now)", tr_broker::demo::order_line(o)),
-                    _ => format!("{} working", tr_broker::demo::order_line(o)),
+                    "EXECUTED" => hd_broker::demo::fill_message(o),
+                    "CANCELED" => format!("{} cancelled (not fillable now)", hd_broker::demo::order_line(o)),
+                    _ => format!("{} working", hd_broker::demo::order_line(o)),
                 };
                 let saved = self.demo.save_error.is_none();
                 self.trade_toast(format!("Demo: {msg}{}", self.unsaved_note()), saved && o.status != "CANCELED");
@@ -201,7 +201,7 @@ impl TerminalApp {
             Ok(o) => {
                 self.demo.changed();
                 let note = self.unsaved_note();
-                self.trade_toast(format!("Demo: cancelled {}{note}", tr_broker::demo::order_line(&o)), note.is_empty());
+                self.trade_toast(format!("Demo: cancelled {}{note}", hd_broker::demo::order_line(&o)), note.is_empty());
             }
             Err(e) => self.trade_toast(format!("Could not cancel: {e}"), false),
         }
@@ -258,7 +258,7 @@ impl TerminalApp {
             AccountMode::Demo => {
                 self.trade_toast("Switched to the DEMO account: orders are simulated with virtual cash", true);
                 if let Some(t) = &mut self.trading.ticket {
-                    t.account = Some(tr_broker::demo::ACCOUNT_ID.into());
+                    t.account = Some(hd_broker::demo::ACCOUNT_ID.into());
                 }
             }
             AccountMode::Live => {

@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use hd_core::{Bar, Timeframe, sample};
 use tokio::sync::mpsc;
-use tr_core::{Bar, Timeframe, sample};
 
 use crate::{LiveFeed, MarketData, OptionChain, OrderBook, security};
 
@@ -19,9 +19,9 @@ pub struct SampleProvider {
 }
 
 impl Default for SampleProvider {
-    /// History depth defaults to 20,000 bars; `TR_SAMPLE_BARS` raises it (e.g. 1000000).
+    /// History depth defaults to 20,000 bars; `HD_SAMPLE_BARS` raises it (e.g. 1000000).
     fn default() -> Self {
-        let depth = std::env::var("TR_SAMPLE_BARS").ok().and_then(|v| v.parse().ok()).unwrap_or(20_000);
+        let depth = std::env::var("HD_SAMPLE_BARS").ok().and_then(|v| v.parse().ok()).unwrap_or(20_000);
         Self { now: chrono::Utc::now().timestamp(), depth, live_ticks: false }
     }
 }
@@ -129,7 +129,7 @@ pub fn simulated_chain(symbol: &str, spot: f64, expiration: Option<i64>, now: i6
         let m = (strike / spot).ln();
         let vol = base_vol * (1.0 + 1.6 * m * m - 0.35 * m);
         for call in [true, false] {
-            let Some((px, _)) = tr_core::options::black_scholes(call, spot, strike, t, 0.04, 0.0, vol) else {
+            let Some((px, _)) = hd_core::options::black_scholes(call, spot, strike, t, 0.04, 0.0, vol) else {
                 continue;
             };
             let px = px.max(0.01);

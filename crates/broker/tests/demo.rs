@@ -1,8 +1,8 @@
 //! The paper-trading demo account: fills, resting orders, buying power, persistence.
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use tr_broker::demo::{self, ACCOUNT_ID, DemoBook, Event, STARTING_CASH};
-use tr_broker::trading::{Amount, OrderRequest, OrderType, Side, TimeInForce};
+use hd_broker::demo::{self, ACCOUNT_ID, DemoBook, Event, STARTING_CASH};
+use hd_broker::trading::{Amount, OrderRequest, OrderType, Side, TimeInForce};
 
 fn t0() -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 10, 12, 15, 0, 0).unwrap()

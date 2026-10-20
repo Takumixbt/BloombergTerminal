@@ -1,6 +1,6 @@
-# terminal-rs (Windows + crypto order-flow fork)
+# hyperdesk (Windows + crypto order-flow fork)
 
-> **This fork** of [michaelshimeles/terminal-rs](https://github.com/michaelshimeles/terminal-rs)
+> **This fork** of [michaelshimeles/hyperdesk](https://github.com/michaelshimeles/hyperdesk)
 > adds a **native Windows app** (installer, Credential Manager, `%APPDATA%` storage) and
 > **crypto derivatives and order-flow panes** inspired by [Velo](https://velo.xyz) and
 > [OpenMarket](https://openmarket.xyz): a cross-venue funding / open interest / basis board,
@@ -15,7 +15,7 @@
 >
 > | | |
 > |---|---|
-> | ![BTC perpetuals detail: per-venue funding, open interest, history, Deribit curve and DVOL; a Polymarket market with odds history and order book](docs/img/crypto-detail.png) | **`DERIV BTC`** — every venue's price, mark, index, premium, funding (per interval, 8h, APR) and next funding; open interest, funding, long/short and taker-flow history; Deribit annualised basis curve and DVOL. **`PRED`** — Polymarket odds history and order book. Screenshots use `TR_PROVIDER=sample` (marked SIMULATED). |
+> | ![BTC perpetuals detail: per-venue funding, open interest, history, Deribit curve and DVOL; a Polymarket market with odds history and order book](docs/img/crypto-detail.png) | **`DERIV BTC`** — every venue's price, mark, index, premium, funding (per interval, 8h, APR) and next funding; open interest, funding, long/short and taker-flow history; Deribit annualised basis curve and DVOL. **`PRED`** — Polymarket odds history and order book. Screenshots use `HD_PROVIDER=sample` (marked SIMULATED). |
 >
 > ### What this fork adds
 >
@@ -42,22 +42,22 @@
 > [`docs/analysis/velo-openmarket.md`](docs/analysis/velo-openmarket.md) for the safe way to add it.
 >
 > The new panes are in the `+` menus, the ⌘K/Ctrl+K palette and Help (F1), save with layouts,
-> follow link groups for crypto keys, and run fully offline with `TR_PROVIDER=sample`.
+> follow link groups for crypto keys, and run fully offline with `HD_PROVIDER=sample`.
 > Feature-by-feature comparison and roadmap: [`docs/analysis/velo-openmarket.md`](docs/analysis/velo-openmarket.md).
 >
 > ### Windows
 >
-> - **Install:** download `terminal-rs-<version>-setup-x64.exe` (per-user install, no admin
+> - **Install:** download `hyperdesk-<version>-setup-x64.exe` (per-user install, no admin
 >   rights; Start menu shortcut) or the portable `…-windows-x64.zip` from the GitHub Actions
 >   artifacts or a release (push a `v*` tag to publish one).
 > - **Build it yourself:** install [Rust](https://rustup.rs) (MSVC toolchain), then
 >   `cargo run --release`, or `powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1`
 >   for the zip and (with [Inno Setup 6](https://jrsoftware.org/isinfo.php)) the installer.
 >   From Linux: `scripts/build-windows-cross.sh` (mingw-w64).
-> - **Where things live:** settings, layouts, themes and caches in `%APPDATA%\terminal-rs`;
->   SnapTrade secrets in **Windows Credential Manager** (`terminal-rs/snaptrade`); logs in
->   `%APPDATA%\terminal-rs\terminal-rs.log` (release builds have no console window;
->   `TR_LOG_FILE=` with an empty value logs to stdout).
+> - **Where things live:** settings, layouts, themes and caches in `%APPDATA%\hyperdesk`;
+>   SnapTrade secrets in **Windows Credential Manager** (`hyperdesk/snaptrade`); logs in
+>   `%APPDATA%\hyperdesk\hyperdesk.log` (release builds have no console window;
+>   `HD_LOG_FILE=` with an empty value logs to stdout).
 > - Shortcuts: ⌘ is **Ctrl** and ⌥ is **Alt**. Fonts: Segoe UI and Cascadia Mono / Consolas.
 >   Charts use DirectX 12 or Vulkan through wgpu with 4× MSAA by default.
 
@@ -72,7 +72,7 @@ systems** and **your own brokerage accounts through [SnapTrade](https://snaptrad
 to Solarized, and a fully dockable
 workspace with saved layouts.
 
-![terminal-rs: AAPL chart with congress trade markers and RSI, the Congress trades feed, world markets and a multi-asset watchlist](docs/img/overview.png)
+![hyperdesk: AAPL chart with congress trade markers and RSI, the Congress trades feed, world markets and a multi-asset watchlist](docs/img/overview.png)
 
 > **Built from reverse-engineering research.** Chart UX was studied behaviourally on
 > tradingview.com with [REA](https://github.com/morluto/rea) in website mode (passive captures of
@@ -139,7 +139,7 @@ gets the native title bar with traffic lights, window vibrancy behind the sideba
   2s10s / 3m10y / 5s30s), **news** (`AAPL CN`; Yahoo headlines, CoinDesk for crypto) and
   **order book** depth (`BTCUSD CRNCY OB`; live Binance book, Coinbase fallback; markets without a
   free public book show a clearly marked simulation).
-- **Market data behind a trait** (`tr_data::MarketData`), routed per asset class to free sources:
+- **Market data behind a trait** (`hd_data::MarketData`), routed per asset class to free sources:
 
   | Asset class | History | Quotes | Live |
   |---|---|---|---|
@@ -148,7 +148,7 @@ gets the native title bar with traffic lights, window vibrancy behind the sideba
   | FX, indices, futures | Yahoo Finance (`EURUSD=X`, `^GSPC`, `CL=F`) | Yahoo spark (batched) | — |
   | Stocks, ETFs | Alpaca when `APCA_API_KEY_ID`/`APCA_API_SECRET_KEY` are set, else Yahoo | Yahoo spark | — |
 
-  No keys are required. `TR_PROVIDER=sample` runs fully offline on deterministic, class-aware sample
+  No keys are required. `HD_PROVIDER=sample` runs fully offline on deterministic, class-aware sample
   data (BTCUSD near 65,000, EURUSD near 1.09, US10Y near 4.2%) **with simulated live ticks**, and
   the live router falls back to sample data when a source is unreachable. Bars are cached in SQLite
   so charts paint from disk on start. Older history pages in as you scroll left.
@@ -161,7 +161,7 @@ gets the native title bar with traffic lights, window vibrancy behind the sideba
     and filed date into SQLite. Party comes from the official rosters (clerk.house.gov
     `MemberData.xml`, senate.gov `senators_cfm.xml`); politicians are keyed by bioguide ID, which
     also repairs typos in the source index.
-  - Refreshed on a schedule (every 30 minutes by default, `TR_CONGRESS_REFRESH_MIN`, `0` disables;
+  - Refreshed on a schedule (every 30 minutes by default, `HD_CONGRESS_REFRESH_MIN`, `0` disables;
     `REFRESH`/F6 forces one), incrementally — only unseen filings are fetched.
   - Panels: latest trades feed with party/chamber/side filters (`CONG`); per-ticker "who in
     Congress traded it" (`NVDA CONG`, or right-click any ticker); politician profile with trade
@@ -185,7 +185,7 @@ gets the native title bar with traffic lights, window vibrancy behind the sideba
     row in a linked watchlist or world-markets pane loads it into the group.
   - **Saved layouts**: save, name, rename, duplicate, delete and switch (`LAYOUT <name>`, the
     sidebar list, ⌥1…⌥9); the active layout autosaves and is restored on launch. Each layout is a
-    JSON file in `~/Library/Application Support/terminal-rs/layouts` (`$XDG_DATA_HOME` on Linux)
+    JSON file in `~/Library/Application Support/hyperdesk/layouts` (`$XDG_DATA_HOME` on Linux)
     and can be imported or exported (`LAYOUT EXPORT`/`IMPORT`, or Settings › Layouts). Per-pane
     settings (chart type, indicators, drawings, filters, depth, link, tab title) and, optionally,
     the theme (`LAYOUT THEME ON`) save with the layout.
@@ -214,8 +214,8 @@ gets the native title bar with traffic lights, window vibrancy behind the sideba
   Congress trades and watchlist. `AAPL POS` / `AAPL ORD` filter to one security, the account picker
   to one account. Stocks, ETFs, funds, crypto and options (OCC symbols shown as `AAPL 350C`) are
   supported. Read-only unless you turn on trading (below); Connect Brokerage requests read-only
-  access. Without credentials the panes show a setup screen; offline (`TR_PROVIDER=sample` or
-  `TR_BROKER=sample`) they show a clearly labelled simulated portfolio. See
+  access. Without credentials the panes show a setup screen; offline (`HD_PROVIDER=sample` or
+  `HD_BROKER=sample`) they show a clearly labelled simulated portfolio. See
   [Brokerage setup](#brokerage-setup-snaptrade).
 - **Demo account and easy trading** — a **DEMO** paper-trading account ($100,000 virtual cash) is
   selected by default; the toolbar badge shows DEMO or a red **LIVE** and switches between them
@@ -240,20 +240,20 @@ gets the native title bar with traffic lights, window vibrancy behind the sideba
 
 ```sh
 cargo run --release                  # Yahoo data, congress ingest in the background
-TR_PROVIDER=sample cargo run --release   # offline
+HD_PROVIDER=sample cargo run --release   # offline
 APCA_API_KEY_ID=… APCA_API_SECRET_KEY=… cargo run --release   # Alpaca
 ```
 
-Data lives in `~/Library/Application Support/terminal-rs` (macOS) or
-`$XDG_DATA_HOME/terminal-rs` (Linux), or `TR_DATA_DIR`. The first congress ingest covers the
+Data lives in `~/Library/Application Support/hyperdesk` (macOS) or
+`$XDG_DATA_HOME/hyperdesk` (Linux), or `HD_DATA_DIR`. The first congress ingest covers the
 current and previous year (a few minutes; it runs in the background while you work).
-`cargo run -p tr-congress --example ingest -- congress.sqlite3` runs one ingest from the CLI.
+`cargo run -p hd-congress --example ingest -- congress.sqlite3` runs one ingest from the CLI.
 
-Appearance: `TR_THEME=light|dark|<theme name>` overrides the saved theme, `TR_MSAA=1|2|4|8` sets
-chart anti-aliasing (default 4 on macOS), `TR_VIBRANCY=0` disables the translucent sidebar, and
+Appearance: `HD_THEME=light|dark|<theme name>` overrides the saved theme, `HD_MSAA=1|2|4|8` sets
+chart anti-aliasing (default 4 on macOS), `HD_VIBRANCY=0` disables the translucent sidebar, and
 ⌃⌘S (Ctrl+Shift+S elsewhere) toggles the sidebar. `scripts/bundle-macos.sh` builds a retina-capable
-`Terminal.app` (icon from `scripts/build-icon.sh`); `scripts/release-macos.sh` builds the universal (Apple Silicon + Intel) app,
-signs it with a Developer ID certificate, notarizes it and packages `terminal-rs-universal.dmg`
+`Hyperdesk.app` (icon from `scripts/build-icon.sh`); `scripts/release-macos.sh` builds the universal (Apple Silicon + Intel) app,
+signs it with a Developer ID certificate, notarizes it and packages `hyperdesk-universal.dmg`
 (one-time credential setup is at the top of the script); `scripts/check-macos-cross.sh` compiles
 and lints the whole workspace for aarch64-apple-darwin from Linux (zig as the C cross-compiler;
 linking needs the macOS SDK).
@@ -281,13 +281,13 @@ the portal, and **Disconnect** removes a connection and its accounts from SnapTr
 explicit confirmation.
 
 **Where credentials live.** On macOS the client ID, consumer key, user ID and user secret are
-stored together in the **Keychain** (generic password, service `terminal-rs`, account
+stored together in the **Keychain** (generic password, service `hyperdesk`, account
 `snaptrade`). Elsewhere they go in `<data dir>/secrets/snaptrade.json` with owner-only permissions
 (0600 in a 0700 directory). They are never written to the repository, layouts, prefs or logs;
 request errors are scrubbed of the URL (which carries the user secret), and the settings screen
 masks secrets. **Forget Credentials** removes them. `SNAPTRADE_CLIENT_ID`,
 `SNAPTRADE_CONSUMER_KEY`, `SNAPTRADE_USER_ID` and `SNAPTRADE_USER_SECRET` override the saved
-values field by field (useful for CI or a shell profile), and `TR_SECRET_STORE=file` uses the
+values field by field (useful for CI or a shell profile), and `HD_SECRET_STORE=file` uses the
 file store on macOS.
 
 **How it talks to SnapTrade.** Requests go to `https://api.snaptrade.com` and are signed as the
@@ -422,7 +422,7 @@ Measured on Linux with Mesa **llvmpipe (a CPU software rasterizer)** — a real 
 
 - **Cold start**: window and GPU ready in **143 ms**; charts paint from the SQLite cache as soon as
   the worker answers.
-- **1M-bar pan/zoom** (`cargo run --release -p tr-chart --example framebench`, 1600×900, candles +
+- **1M-bar pan/zoom** (`cargo run --release -p hd-chart --example framebench`, 1600×900, candles +
   volume + 2 overlays, 300 frames per phase):
 
   | phase | CPU per frame p50 / p99 | until GPU done p50 / p99 |
@@ -432,14 +432,14 @@ Measured on Linux with Mesa **llvmpipe (a CPU software rasterizer)** — a real 
   | zoom in to 8 px/bar | 0.05 / 0.19 ms | 1.34 / 2.63 ms |
 
   All within the 8.33 ms budget for 120 fps even on the software rasterizer. Criterion versions:
-  `cargo bench -p tr-chart --bench frame`.
+  `cargo bench -p hd-chart --bench frame`.
 - **In the app** (F12 readout, interactive wheel-zoom + drag): UI CPU ≈ 0.2 ms per frame, 118 fps.
   To try a million bars interactively:
-  `TR_PROVIDER=sample TR_SAMPLE_BARS=1000000 TR_HISTORY_LIMIT=1000000 TR_FPS=1 cargo run --release`, then `1 <GO>`.
+  `HD_PROVIDER=sample HD_SAMPLE_BARS=1000000 HD_HISTORY_LIMIT=1000000 HD_FPS=1 cargo run --release`, then `1 <GO>`.
   With all 1M one-minute bars visible on llvmpipe under Xvfb the app measured UI CPU 0.36 ms and
   76 fps for the whole window (software rasterization and presentation bound; the chart pass itself
   is the benchmark above).
-- **Indicators over 1M bars** (`cargo bench -p tr-core`): SMA 1.8 ms, EMA 2.2 ms, VWAP 7.0 ms,
+- **Indicators over 1M bars** (`cargo bench -p hd-core`): SMA 1.8 ms, EMA 2.2 ms, VWAP 7.0 ms,
   Bollinger 29 ms; RSI and MACD are single-pass (≈ 12 ms and 26 ms including first-touch of their
   output memory). The whole 151-indicator catalogue at default parameters over 100k one-minute
   bars takes ≈ 134 ms on macOS (Ichimoku, the slowest, 6.6 ms).
@@ -448,8 +448,8 @@ Measured on Linux with Mesa **llvmpipe (a CPU software rasterizer)** — a real 
 
 ```sh
 cargo test --workspace                       # unit + fixture tests (parsers, indicators, chart, app)
-cargo test -p tr-data -- --ignored           # live tests: every asset class, quotes, curve, search, websocket
-cargo bench -p tr-core && cargo bench -p tr-chart
+cargo test -p hd-data -- --ignored           # live tests: every asset class, quotes, curve, search, websocket
+cargo bench -p hd-core && cargo bench -p hd-chart
 ```
 
 - Parsers are tested against real filings captured from the official sources
@@ -494,8 +494,8 @@ cargo bench -p tr-core && cargo bench -p tr-chart
 - Windows 10/11 x64 is supported in this fork (DirectX 12 or Vulkan); CI builds, tests, lints,
   smoke-runs and packages it. macOS remains upstream's primary target (wgpu Metal backend);
   Linux works with Vulkan or GL. This repository
-  was developed and run on Linux (X11, software Vulkan). For macOS, the GPU and UI stack (`tr-core`,
-  `tr-chart`, `tr-macos`, eframe/winit) is cross-checked for `aarch64-apple-darwin`, and CI
+  was developed and run on Linux (X11, software Vulkan). For macOS, the GPU and UI stack (`hd-core`,
+  `hd-chart`, `hd-macos`, eframe/winit) is cross-checked for `aarch64-apple-darwin`, and CI
   (`.github/workflows/ci.yml`) builds, tests, lints and launches the app with screenshots on macOS
   arm64 and Intel runners.
 - Scanned paper filings (some House PTRs and Senate `/paper/` reports) are recorded and alerted but

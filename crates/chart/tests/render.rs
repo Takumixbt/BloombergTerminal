@@ -1,10 +1,10 @@
 //! Renders real frames offscreen (any adapter, including software Vulkan) and checks pixels.
 
-use tr_chart::gpu::{Frame, LineKind, Reveal, Style};
-use tr_chart::headless::Headless;
-use tr_chart::scene::{ChartType, Overlay, PricePane, SeriesGpu, line_ref, price_pane, sub_pane};
-use tr_chart::viewport::Viewport;
-use tr_core::{Timeframe, indicators, sample};
+use hd_chart::gpu::{Frame, LineKind, Reveal, Style};
+use hd_chart::headless::Headless;
+use hd_chart::scene::{ChartType, Overlay, PricePane, SeriesGpu, line_ref, price_pane, sub_pane};
+use hd_chart::viewport::Viewport;
+use hd_core::{Timeframe, indicators, sample};
 
 fn dump_ppm(path: &str, w: u32, h: u32, rgba: &[u8]) {
     let mut out = format!("P6 {w} {h} 255\n").into_bytes();
@@ -47,7 +47,7 @@ fn renders_candles_volume_lines_and_hist() {
         });
         h.render(&mut [Frame { pane: 1, frame_no: 0, cmds: out.cmds }]);
         let px = h.read_pixels();
-        if let Ok(dir) = std::env::var("TR_DUMP_DIR") {
+        if let Ok(dir) = std::env::var("HD_DUMP_DIR") {
             dump_ppm(&format!("{dir}/{ct:?}.ppm"), 800, 400, &px);
         }
         let green = count(&px, |p| p[1] > 150 && p[0] < 100);
@@ -124,7 +124,7 @@ fn reveal_sweeps_in_from_the_left_and_fades() {
     };
 
     let half = draw(Reveal::sweep(0.45, v.left(), v.visible_bars()), 1);
-    if let Ok(dir) = std::env::var("TR_DUMP_DIR") {
+    if let Ok(dir) = std::env::var("HD_DUMP_DIR") {
         dump_ppm(&format!("{dir}/reveal.ppm"), 800, 400, &half);
     }
     let (left, right) = (lit(&half, 0, 250), lit(&half, 450, 800));
@@ -161,7 +161,7 @@ fn steps_draw_short_sessions_without_joining_them() {
         px.as_chunks::<4>().0.iter().enumerate().filter(|(i, p)| (y0..y1).contains(&(i / 800)) && p[0] > 0).count()
     };
     let steps = draw(LineKind::Steps, 1);
-    if let Ok(dir) = std::env::var("TR_DUMP_DIR") {
+    if let Ok(dir) = std::env::var("HD_DUMP_DIR") {
         dump_ppm(&format!("{dir}/steps.ppm"), 800, 400, &steps);
     }
     let (high, low, one_bar) = (rows(&steps, 95, 105), rows(&steps, 295, 305), rows(&steps, 195, 205));

@@ -1,4 +1,4 @@
-//! A deterministic simulated portfolio for offline mode (`TR_PROVIDER=sample`) and demos.
+//! A deterministic simulated portfolio for offline mode (`HD_PROVIDER=sample`) and demos.
 //! It is always flagged `simulated` and labelled as such in the UI.
 
 use chrono::{Duration, TimeZone, Utc};

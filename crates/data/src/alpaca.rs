@@ -6,8 +6,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use hd_core::{Bar, Timeframe};
 use serde::Deserialize;
-use tr_core::{Bar, Timeframe};
 
 use crate::MarketData;
 

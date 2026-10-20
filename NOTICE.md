@@ -1,12 +1,12 @@
 # Notice and attribution
 
-This project is a fork of **[terminal-rs](https://github.com/michaelshimeles/terminal-rs)** by
+This project is a fork of **[hyperdesk](https://github.com/michaelshimeles/hyperdesk)** by
 Michael Shimeles (imported from commit `d6006d6`), extended with:
 
 - a Windows build (data folder, fonts, Credential Manager secrets, icon and version resource,
   GUI subsystem with a log file, installer and CI);
 - crypto derivatives, liquidations, order-flow and prediction-market panes in the new
-  `crates/flow` (`tr-flow`), inspired by the public feature sets of
+  `crates/flow` (`hd-flow`), inspired by the public feature sets of
   [Velo](https://velo.xyz) and [OpenMarket](https://openmarket.xyz);
 - Hyperliquid trader intelligence and crypto options flow, inspired by the public feature
   lists of [Hyperdash](https://hyperdash.com) and [Gambit Terminal](https://terminal.gambit.zone).

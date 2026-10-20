@@ -1654,6 +1654,116 @@ dependencies = [
 ]
 
 [[package]]
+name = "hd-broker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "chrono",
+ "futures",
+ "hd-core",
+ "hmac",
+ "reqwest",
+ "security-framework",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "hd-chart"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "chrono",
+ "criterion",
+ "egui",
+ "egui-wgpu",
+ "hd-core",
+ "pollster 0.4.0",
+ "serde",
+]
+
+[[package]]
+name = "hd-congress"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "futures",
+ "pdf-extract",
+ "quick-xml 0.42.0",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "scraper",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zip",
+]
+
+[[package]]
+name = "hd-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "criterion",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "hd-data"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "futures",
+ "hd-core",
+ "reqwest",
+ "rusqlite",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+]
+
+[[package]]
+name = "hd-flow"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "futures",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+]
+
+[[package]]
+name = "hd-macos"
+version = "0.1.0"
+dependencies = [
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
 name = "hermit-abi"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1782,6 +1892,32 @@ dependencies = [
  "tokio",
  "tower-service",
  "tracing",
+]
+
+[[package]]
+name = "hyperdesk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "eframe",
+ "egui",
+ "futures",
+ "hd-broker",
+ "hd-chart",
+ "hd-congress",
+ "hd-core",
+ "hd-data",
+ "hd-flow",
+ "hd-macos",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml 0.9.12+spec-1.1.0",
+ "tracing",
+ "tracing-subscriber",
+ "winresource",
 ]
 
 [[package]]
@@ -4086,32 +4222,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "terminal-rs"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "eframe",
- "egui",
- "futures",
- "raw-window-handle",
- "serde",
- "serde_json",
- "tokio",
- "toml 0.9.12+spec-1.1.0",
- "tr-broker",
- "tr-chart",
- "tr-congress",
- "tr-core",
- "tr-data",
- "tr-flow",
- "tr-macos",
- "tracing",
- "tracing-subscriber",
- "winresource",
-]
-
-[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4419,116 +4529,6 @@ name = "tower-service"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
-
-[[package]]
-name = "tr-broker"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "chrono",
- "futures",
- "hmac",
- "reqwest",
- "security-framework",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "tr-core",
- "tracing",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "tr-chart"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "chrono",
- "criterion",
- "egui",
- "egui-wgpu",
- "pollster 0.4.0",
- "serde",
- "tr-core",
-]
-
-[[package]]
-name = "tr-congress"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "futures",
- "pdf-extract",
- "quick-xml 0.42.0",
- "regex",
- "reqwest",
- "rusqlite",
- "scraper",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "zip",
-]
-
-[[package]]
-name = "tr-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "criterion",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "tr-data"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "futures",
- "reqwest",
- "rusqlite",
- "rustls",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "tr-core",
- "tracing",
-]
-
-[[package]]
-name = "tr-flow"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "futures",
- "reqwest",
- "rustls",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "tracing",
-]
-
-[[package]]
-name = "tr-macos"
-version = "0.1.0"
-dependencies = [
- "objc2 0.6.5",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
-]
 
 [[package]]
 name = "tracing"

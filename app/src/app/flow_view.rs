@@ -1,4 +1,4 @@
-//! Crypto derivatives and order-flow panes (data from `tr-flow`):
+//! Crypto derivatives and order-flow panes (data from `hd-flow`):
 //!
 //! - `DERIV`: funding, open interest, volume, premium and long/short for every perp across
 //!   Binance, Bybit, OKX and Hyperliquid; `BTC DERIV` drills into one coin (per-venue table,
@@ -12,14 +12,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use egui::{Align2, Color32, ColorImage, Pos2, Rect, RichText, Sense, Shape, Stroke, TextureOptions, Ui, pos2, vec2};
+use hd_flow::deribit::TermStructure;
+use hd_flow::history::CoinHistory;
+use hd_flow::liq::{SharedTape, Side};
+use hd_flow::orderflow::SharedFlow;
+use hd_flow::perps::{Board, CoinRow};
+use hd_flow::polymarket::{Detail, Market};
+use hd_flow::{Exchange, fmt_usd};
 use serde::{Deserialize, Serialize};
-use tr_flow::deribit::TermStructure;
-use tr_flow::history::CoinHistory;
-use tr_flow::liq::{SharedTape, Side};
-use tr_flow::orderflow::SharedFlow;
-use tr_flow::perps::{Board, CoinRow};
-use tr_flow::polymarket::{Detail, Market};
-use tr_flow::{Exchange, fmt_usd};
 
 use super::{PaneKind, TerminalApp};
 use crate::congress_view::Action;
@@ -60,7 +60,7 @@ pub struct DerivPane {
 impl DerivPane {
     pub fn new(coin: Option<String>, apr: bool) -> Self {
         Self {
-            coin: coin.map(|c| tr_flow::venue::coin_of_key(&c)),
+            coin: coin.map(|c| hd_flow::venue::coin_of_key(&c)),
             sort: DerivSort::Oi,
             ascending: false,
             apr,
@@ -90,7 +90,7 @@ pub struct LiqPane {
 
 impl LiqPane {
     pub fn new(coin: Option<String>, min_usd: f64) -> Self {
-        Self { coin: coin.map(|c| tr_flow::venue::coin_of_key(&c)), min_usd, window_min: 60 }
+        Self { coin: coin.map(|c| hd_flow::venue::coin_of_key(&c)), min_usd, window_min: 60 }
     }
 }
 
@@ -122,7 +122,7 @@ impl FlowPane {
     pub fn new(coin: &str, venue: Exchange, view: FlowView, tf_secs: i64) -> Self {
         let venue = if venue == Exchange::Hyperliquid { venue } else { Exchange::Binance };
         Self {
-            coin: tr_flow::venue::coin_of_key(coin),
+            coin: hd_flow::venue::coin_of_key(coin),
             venue,
             view,
             tf_secs: tf_secs.max(60),
@@ -137,7 +137,7 @@ impl FlowPane {
 
     /// Point the pane at another market; the old stream stops once its handle drops.
     pub fn retarget(&mut self, coin: &str, venue: Exchange) {
-        let coin = tr_flow::venue::coin_of_key(coin);
+        let coin = hd_flow::venue::coin_of_key(coin);
         if coin != self.coin || venue != self.venue {
             *self = FlowPane { zoom: self.zoom, ..FlowPane::new(&coin, venue, self.view, self.tf_secs) };
         }
@@ -304,7 +304,7 @@ impl TerminalApp {
 
 fn simulated_badge(ui: &mut Ui, what: &str) {
     ui.label(RichText::new(" SIMULATED ").font(ui_font(10.5)).color(Color32::BLACK).background_color(amber()))
-        .on_hover_text(format!("Offline sample data (TR_PROVIDER=sample); {what} are synthetic."));
+        .on_hover_text(format!("Offline sample data (HD_PROVIDER=sample); {what} are synthetic."));
 }
 
 fn title(ui: &mut Ui, s: &str) {
@@ -1213,7 +1213,7 @@ const AXIS_W: f32 = 74.0;
 
 fn price_axis(p: &egui::Painter, plot: Rect, lo: f64, hi: f64, last: Option<f64>) {
     let y = |v: f64| plot.bottom() - ((v - lo) / (hi - lo)) as f32 * plot.height();
-    let step = tr_flow::nice_step((hi - lo) / (plot.height() / dp(36.0)).max(1.0) as f64);
+    let step = hd_flow::nice_step((hi - lo) / (plot.height() / dp(36.0)).max(1.0) as f64);
     let mut v = (lo / step).ceil() * step;
     let x = plot.right() + 4.0;
     while v <= hi {
@@ -1314,7 +1314,7 @@ fn heatmap(ui: &mut Ui, f: &mut FlowPane, flow: &SharedFlow, rect: Rect, hover: 
         pc.circle(pos2(x0 + (k as f32 + 0.5) * col_w, y(px)), r, col.gamma_multiply(0.45), Stroke::new(1.0, col));
     }
     // Best bid / ask on top.
-    let line = |sel: &dyn Fn(&tr_flow::orderflow::HeatCol) -> f64, c: Color32| {
+    let line = |sel: &dyn Fn(&hd_flow::orderflow::HeatCol) -> f64, c: Color32| {
         let pts: Vec<Pos2> =
             cols.iter().enumerate().map(|(k, col)| pos2(x0 + (k as f32 + 0.5) * col_w, y(sel(col)))).collect();
         pc.add(Shape::line(pts, Stroke::new(1.5, c)));

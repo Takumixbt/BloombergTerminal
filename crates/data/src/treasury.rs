@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::{Datelike, NaiveDate};
+use hd_core::{Bar, Security, Timeframe, catalog};
 use tokio::sync::Mutex;
-use tr_core::{Bar, Security, Timeframe, catalog};
 
 use crate::{CurvePoint, YieldCurve, YieldCurves, pick_curves};
 
@@ -113,7 +113,7 @@ pub struct TreasuryProvider {
 impl TreasuryProvider {
     pub fn new() -> Result<Self> {
         let client = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (compatible; terminal-rs)")
+            .user_agent("Mozilla/5.0 (compatible; hyperdesk)")
             .timeout(Duration::from_secs(30))
             .build()?;
         Ok(Self { client, years: Mutex::new(HashMap::new()) })

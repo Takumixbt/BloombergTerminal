@@ -2,8 +2,8 @@
 //! saved layouts.
 
 use egui::{RichText, Ui};
-use tr_chart::scene::ChartType;
-use tr_core::Timeframe;
+use hd_chart::scene::ChartType;
+use hd_core::Timeframe;
 
 use super::TerminalApp;
 use super::workspace::LayoutOp;
@@ -537,7 +537,7 @@ impl TerminalApp {
                     a.theme = SYSTEM.into();
                 }
                 if a.dark_theme == name {
-                    a.dark_theme = "Terminal Dark".into();
+                    a.dark_theme = "Hyperdesk".into();
                 }
                 if a.light_theme == name {
                     a.light_theme = "Terminal Light".into();

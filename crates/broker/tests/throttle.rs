@@ -6,10 +6,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use hd_broker::trading::{Amount, OrderPreview, OrderRequest, OrderType, PlaceError, Side, SymbolMatch, TimeInForce};
+use hd_broker::{Credentials, SnapTrade};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tr_broker::trading::{Amount, OrderPreview, OrderRequest, OrderType, PlaceError, Side, SymbolMatch, TimeInForce};
-use tr_broker::{Credentials, SnapTrade};
 
 const THROTTLED: &str = r#"{"detail":"Request was throttled. Expected available in 1 seconds."}"#;
 
@@ -58,7 +58,7 @@ fn client(base: &str) -> SnapTrade {
     let creds = Credentials {
         client_id: "TEST".into(),
         consumer_key: "key".into(),
-        user_id: "terminal-rs-test".into(),
+        user_id: "hyperdesk-test".into(),
         user_secret: "s".into(),
     };
     SnapTrade::with_base(creds, base).unwrap()
@@ -80,9 +80,9 @@ async fn throttled_reads_retry_and_orders_are_never_resent() {
     let base = mock(usize::MAX, seen.clone()).await;
     let e = client(&base).connection_capabilities().await.unwrap_err();
     let msg = format!("{e:#}");
-    assert!(tr_broker::snaptrade::throttle(&e).is_some());
+    assert!(hd_broker::snaptrade::throttle(&e).is_some());
     assert!(msg.contains("rate-limiting") && !msg.contains("Request was throttled"), "{msg}");
-    assert_eq!(seen.lock().unwrap().len(), 1 + tr_broker::snaptrade::MAX_RETRIES as usize);
+    assert_eq!(seen.lock().unwrap().len(), 1 + hd_broker::snaptrade::MAX_RETRIES as usize);
 
     // A throttled placement is sent exactly once and reported as not placed.
     let seen = Arc::new(Mutex::new(Vec::new()));
@@ -127,7 +127,7 @@ async fn throttled_reads_retry_and_orders_are_never_resent() {
     let _ = client(&base).connection_capabilities().await; // starts a 4 s pause
     let mut soon = preview.clone();
     soon.created = chrono::Utc::now()
-        - chrono::Duration::seconds(tr_broker::trading::PREVIEW_TTL_SECS - tr_broker::trading::PREVIEW_MARGIN_SECS - 2);
+        - chrono::Duration::seconds(hd_broker::trading::PREVIEW_TTL_SECS - hd_broker::trading::PREVIEW_MARGIN_SECS - 2);
     let start = Instant::now();
     let e = client(&base).place_previewed(&soon).await.unwrap_err();
     assert!(start.elapsed().as_secs() < 2, "refused at once, not after the pause");
@@ -140,7 +140,7 @@ async fn throttled_reads_retry_and_orders_are_never_resent() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let base = mock_retry_after(120, seen.clone()).await;
     let e = client(&base).connection_capabilities().await.unwrap_err();
-    assert!(tr_broker::snaptrade::throttle(&e).flatten().is_some_and(|d| d.as_secs() >= 100));
+    assert!(hd_broker::snaptrade::throttle(&e).flatten().is_some_and(|d| d.as_secs() >= 100));
     let start = Instant::now();
     let e = client(&base).place_previewed(&preview).await.unwrap_err();
     assert!(start.elapsed().as_secs() < 5, "an order is never held for minutes");

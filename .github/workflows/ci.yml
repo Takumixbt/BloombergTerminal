@@ -34,15 +34,15 @@ jobs:
       - name: Clippy
         run: cargo clippy --release --workspace --all-targets -- -D warnings
       - name: Frame benchmark (Metal if available)
-        run: cargo run --release -p tr-chart --example framebench 200000 || echo "no GPU adapter on this runner"
+        run: cargo run --release -p hd-chart --example framebench 200000 || echo "no GPU adapter on this runner"
       - name: Run the app (smoke test, offline sample data)
         env:
-          TR_PROVIDER: sample
-          TR_CONGRESS_REFRESH_MIN: "0"
-          TR_SMOKE_SECS: "8"
-          TR_DATA_DIR: ${{ runner.temp }}/terminal-rs
+          HD_PROVIDER: sample
+          HD_CONGRESS_REFRESH_MIN: "0"
+          HD_SMOKE_SECS: "8"
+          HD_DATA_DIR: ${{ runner.temp }}/hyperdesk
         run: |
-          ./target/release/terminal-rs > smoke.log 2>&1 &
+          ./target/release/hyperdesk > smoke.log 2>&1 &
           pid=$!
           sleep 6
           screencapture -x screenshot-${{ matrix.arch }}.png || true
@@ -54,11 +54,11 @@ jobs:
           exit $status
       - name: Run the app against live sources
         env:
-          TR_SMOKE_SECS: "12"
-          TR_CONGRESS_REFRESH_MIN: "0"
-          TR_DATA_DIR: ${{ runner.temp }}/terminal-rs-live
+          HD_SMOKE_SECS: "12"
+          HD_CONGRESS_REFRESH_MIN: "0"
+          HD_DATA_DIR: ${{ runner.temp }}/hyperdesk-live
         run: |
-          ./target/release/terminal-rs > live.log 2>&1 &
+          ./target/release/hyperdesk > live.log 2>&1 &
           pid=$!
           sleep 10
           screencapture -x screenshot-live-${{ matrix.arch }}.png || true
@@ -75,7 +75,7 @@ jobs:
             screenshot-*.png
             smoke.log
             live.log
-            target/release/Terminal.app
+            target/release/Hyperdesk.app
 
   windows:
     name: Windows x64
@@ -98,16 +98,16 @@ jobs:
         continue-on-error: true
         shell: pwsh
         env:
-          TR_PROVIDER: sample
-          TR_CONGRESS_REFRESH_MIN: "0"
-          TR_SMOKE_SECS: "8"
-          TR_LOG_FILE: ${{ runner.temp }}\smoke.log
-          TR_DATA_DIR: ${{ runner.temp }}\terminal-rs
+          HD_PROVIDER: sample
+          HD_CONGRESS_REFRESH_MIN: "0"
+          HD_SMOKE_SECS: "8"
+          HD_LOG_FILE: ${{ runner.temp }}\smoke.log
+          HD_DATA_DIR: ${{ runner.temp }}\hyperdesk
         run: |
-          $p = Start-Process -FilePath .\target\release\terminal-rs.exe -PassThru
+          $p = Start-Process -FilePath .\target\release\hyperdesk.exe -PassThru
           $p | Wait-Process -Timeout 120
-          Get-Content $env:TR_LOG_FILE
-          if (-not (Select-String -Path $env:TR_LOG_FILE -Pattern "smoke:" -Quiet)) { exit 1 }
+          Get-Content $env:HD_LOG_FILE
+          if (-not (Select-String -Path $env:HD_LOG_FILE -Pattern "smoke:" -Quiet)) { exit 1 }
       - name: Package (zip + installer)
         shell: pwsh
         run: ./scripts/package-windows.ps1 -NoBuild
@@ -147,7 +147,7 @@ jobs:
       - run: cargo clippy --release --workspace --all-targets -- -D warnings
       - name: Run the app (smoke test)
         env:
-          TR_PROVIDER: sample
-          TR_CONGRESS_REFRESH_MIN: "0"
-          TR_SMOKE_SECS: "6"
-        run: xvfb-run -a ./target/release/terminal-rs 2>&1 | tee smoke.log && grep -q "smoke:" smoke.log
+          HD_PROVIDER: sample
+          HD_CONGRESS_REFRESH_MIN: "0"
+          HD_SMOKE_SECS: "6"
+        run: xvfb-run -a ./target/release/hyperdesk 2>&1 | tee smoke.log && grep -q "smoke:" smoke.log

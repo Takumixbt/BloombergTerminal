@@ -26,11 +26,11 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use egui::{Color32, RichText, Ui};
-use serde::{Deserialize, Serialize};
-use tr_broker::trading::{
+use hd_broker::trading::{
     self, Amount, Capability, OrderPreview, OrderRequest, OrderType, PlaceError, Side, TimeInForce,
 };
-use tr_broker::{Account, InstrumentKind, Order, demo};
+use hd_broker::{Account, InstrumentKind, Order, demo};
+use serde::{Deserialize, Serialize};
 
 use super::TerminalApp;
 use super::broker::{BrokerMode, open_external};
@@ -189,7 +189,7 @@ impl Ticket {
 
     /// Terminal market key for quotes and charts.
     pub fn market_key(&self) -> Option<String> {
-        tr_broker::model::market_key(InstrumentKind::Stock, &self.symbol, "USD")
+        hd_broker::model::market_key(InstrumentKind::Stock, &self.symbol, "USD")
     }
 
     fn busy(&self) -> bool {
@@ -199,7 +199,7 @@ impl Ticket {
 
 /// Broker ticker for a terminal market key (`AAPL US Equity` → `AAPL`).
 pub fn broker_symbol(key: &str) -> String {
-    tr_data::security(key).ticker
+    hd_data::security(key).ticker
 }
 
 /// A cancel waiting for confirmation (or in flight).
@@ -413,8 +413,8 @@ impl TerminalApp {
     /// portfolio instead of the fresh sample so a refresh does not undo them.
     pub(super) fn keep_simulated_trades(
         &self,
-        result: Result<Box<tr_broker::Portfolio>, String>,
-    ) -> Result<Box<tr_broker::Portfolio>, String> {
+        result: Result<Box<hd_broker::Portfolio>, String>,
+    ) -> Result<Box<hd_broker::Portfolio>, String> {
         match (&result, self.broker.portfolio.as_ref()) {
             (Ok(fresh), Some(cur)) if self.trading.sim_trades && fresh.simulated && cur.simulated => {
                 let mut kept = cur.clone();
@@ -528,7 +528,7 @@ impl TerminalApp {
     pub(super) fn quick_trade(&mut self, buy: bool) {
         let symbol = self
             .focused_symbol()
-            .filter(|s| matches!(tr_data::security(s).class, tr_core::AssetClass::Equity | tr_core::AssetClass::Etf));
+            .filter(|s| matches!(hd_data::security(s).class, hd_core::AssetClass::Equity | hd_core::AssetClass::Etf));
         self.open_ticket(TradeArgs { buy: Some(buy), symbol, ..Default::default() }, None);
     }
 
@@ -1607,8 +1607,8 @@ impl TerminalApp {
             ui.add_space(dp(4.0));
             for line in [
                 "Orders you confirm are sent to your real brokerage account through SnapTrade and can execute immediately with real money.",
-                "Market orders fill at the prevailing price, which can differ from the preview. Quotes in terminal-rs may be delayed.",
-                "terminal-rs is provided as is, without warranty. You are responsible for every order you place.",
+                "Market orders fill at the prevailing price, which can differ from the preview. Quotes in Hyperdesk may be delayed.",
+                "Hyperdesk is provided as is, without warranty. You are responsible for every order you place.",
                 "Your brokerage connection must allow trading (reconnect with trading access if it was connected read-only).",
             ] {
                 ui.label(RichText::new(format!("• {line}")).font(ui_font(12.0)).color(text()));
@@ -1692,7 +1692,7 @@ impl TerminalApp {
              requests read-only access; use Reconnect with Trading Access in Settings › Trading for brokers that trade."
                 .into()
         } else {
-            "Read-only: terminal-rs reads accounts, balances, positions, orders and activity. Live trading is off \
+            "Read-only: Hyperdesk reads accounts, balances, positions, orders and activity. Live trading is off \
              (Settings › Trading), and the Connection Portal requests read-only access."
                 .into()
         }
@@ -1785,7 +1785,7 @@ impl TerminalApp {
                 .clicked()
             {
                 self.demo.confirm_reset = true;
-                self.demo.reset_cash = tr_broker::demo::STARTING_CASH;
+                self.demo.reset_cash = hd_broker::demo::STARTING_CASH;
             }
         });
         if self.demo.confirm_reset {
@@ -2071,7 +2071,7 @@ mod tests {
 
     #[test]
     fn editing_the_ticket_invalidates_the_preview() {
-        let mut pf = tr_broker::sample::portfolio();
+        let mut pf = hd_broker::sample::portfolio();
         let mut t = ticket();
         let p = trading::simulate_preview(&pf, &t.request().unwrap(), Some(200.0), chrono::Utc::now()).unwrap();
         t.preview = Some(Box::new(p));

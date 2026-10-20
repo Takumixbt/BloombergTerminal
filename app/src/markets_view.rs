@@ -4,9 +4,9 @@
 use std::collections::HashMap;
 
 use egui::{Align2, Color32, Pos2, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
-use tr_core::catalog::{self, Group, Listing};
-use tr_core::{AssetClass, Security};
-use tr_data::{Quote, SearchHit, YieldCurve, YieldCurves};
+use hd_core::catalog::{self, Group, Listing};
+use hd_core::{AssetClass, Security};
+use hd_data::{Quote, SearchHit, YieldCurve, YieldCurves};
 
 use crate::congress_view::Action;
 use crate::theme::{self, amber, amber_dim, mono, muted, text, ui_font};
@@ -188,7 +188,7 @@ pub fn curve(ui: &mut Ui, curves: Option<&YieldCurves>) -> Vec<Action> {
     let (lo, hi) = (lo - pad, hi + pad);
     let x_of = |i: usize| plot.left() + plot.width() * i as f32 / (n - 1) as f32;
     let y_of = |v: f64| plot.bottom() - plot.height() * ((v - lo) / (hi - lo)) as f32;
-    for t in tr_chart::scale::price_ticks(lo, hi, 6) {
+    for t in hd_chart::scale::price_ticks(lo, hi, 6) {
         let y = y_of(t);
         p.hline(plot.x_range(), y, Stroke::new(1.0, theme::grid()));
         p.text(pos2(plot.right() + 6.0, y), Align2::LEFT_CENTER, format!("{t:.2}%"), mono(10.5), muted());

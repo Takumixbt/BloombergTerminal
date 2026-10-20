@@ -1,7 +1,7 @@
 //! Axis tick generation: "nice" price steps and calendar-aware time labels.
 
 use chrono::{DateTime, Datelike, Timelike, Utc};
-use tr_core::Timeframe;
+use hd_core::Timeframe;
 
 /// Round step for ~`target` ticks across `[lo, hi]` (1, 2, 2.5, 5 x 10^n).
 pub fn nice_step(lo: f64, hi: f64, target: usize) -> f64 {

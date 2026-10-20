@@ -1,16 +1,16 @@
 //! Named, saved workspace layouts: the dock tree, each pane's kind and settings, link
 //! groups and popped-out windows. Stored one JSON file per layout in
-//! `<data dir>/layouts/` (`~/Library/Application Support/terminal-rs/layouts` on macOS),
+//! `<data dir>/layouts/` (`~/Library/Application Support/Hyperdesk/layouts` on macOS),
 //! so they can be shared, hand-edited, imported and exported.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use hd_chart::drawings::Drawing;
+use hd_chart::scene::ChartType;
+use hd_core::Timeframe;
 use serde::{Deserialize, Serialize};
-use tr_chart::drawings::Drawing;
-use tr_chart::scene::ChartType;
-use tr_core::Timeframe;
 
 use crate::command::IndicatorSpec;
 use crate::congress_view::FeedFilter;
@@ -132,7 +132,7 @@ pub enum PaneSettings {
     Flow {
         coin: String,
         #[serde(default)]
-        venue: tr_flow::Exchange,
+        venue: hd_flow::Exchange,
         #[serde(default)]
         view: crate::app::FlowView,
         #[serde(default = "minute")]
@@ -185,8 +185,8 @@ fn yes() -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FeedSettings {
-    pub party: Option<tr_congress::Party>,
-    pub chamber: Option<tr_congress::Chamber>,
+    pub party: Option<hd_congress::Party>,
+    pub chamber: Option<hd_congress::Chamber>,
     pub buys: Option<bool>,
     pub tickers_only: bool,
 }
@@ -310,7 +310,7 @@ impl LayoutDoc {
     /// markets; the chart, heatmap and footprint share the blue link group.
     pub fn crypto_workspace(defaults: &crate::prefs::PanelDefaults) -> LayoutDoc {
         let flow =
-            |view| PaneSettings::Flow { coin: "BTC".into(), venue: tr_flow::Exchange::Binance, view, tf_secs: 60 };
+            |view| PaneSettings::Flow { coin: "BTC".into(), venue: hd_flow::Exchange::Binance, view, tf_secs: 60 };
         let panes = vec![
             chart_settings("BTCUSD Curncy", defaults),
             flow(crate::app::FlowView::Heatmap),

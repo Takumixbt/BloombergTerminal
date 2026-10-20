@@ -2,7 +2,7 @@
 //! market keys (`AAPL US Equity`, `BTCUSD Curncy`, `US10Y Govt`, `CL1 Comdty`, `SPX Index`).
 //!
 //! Provider selection ([`from_env`]):
-//! - `TR_PROVIDER=sample` forces deterministic sample data (fully offline, with simulated
+//! - `HD_PROVIDER=sample` forces deterministic sample data (fully offline, with simulated
 //!   live ticks).
 //! - Otherwise [`markets::Markets`] routes each asset class to a free source: Binance public
 //!   REST/websocket (Coinbase as fallback) for crypto, Treasury.gov (FRED fallback) for US
@@ -25,9 +25,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use hd_core::{AssetClass, Bar, Security, Timeframe, catalog};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tr_core::{AssetClass, Bar, Security, Timeframe, catalog};
 
 pub use cache::BarCache;
 
@@ -388,7 +388,7 @@ pub fn from_env() -> Provider {
     // reqwest and the websocket client both use rustls; pin one crypto provider.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let var = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
-    if var("TR_PROVIDER").is_some_and(|p| p.eq_ignore_ascii_case("sample")) {
+    if var("HD_PROVIDER").is_some_and(|p| p.eq_ignore_ascii_case("sample")) {
         return Arc::new(sample::SampleProvider::default().with_live_ticks());
     }
     let alpaca = match (var("APCA_API_KEY_ID"), var("APCA_API_SECRET_KEY")) {

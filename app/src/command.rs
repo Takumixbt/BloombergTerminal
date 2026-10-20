@@ -3,10 +3,10 @@
 //! Examples: `AAPL`, `AAPL US EQUITY <GO>`, `5`, `1W`, `RSI`, `SMA 50`, `ICHIMOKU`, `IND MOMENTUM`,
 //! `CMP MSFT`, `AAPL CONG`, `CONG`, `POL PELOSI`, `TRACK PELOSI`, `LAYOUT 4`, `FIB`, `HELP`.
 
-use tr_chart::drawings::Tool;
-use tr_chart::scene::ChartType;
-pub use tr_core::indicators::registry::Spec as IndicatorSpec;
-use tr_core::{Security, Timeframe, YellowKey};
+use hd_chart::drawings::Tool;
+use hd_chart::scene::ChartType;
+pub use hd_core::indicators::registry::Spec as IndicatorSpec;
+use hd_core::{Security, Timeframe, YellowKey};
 
 /// Indicators on a new chart: the 20 and 50 bar simple moving averages.
 pub fn default_indicators() -> Vec<IndicatorSpec> {
@@ -280,7 +280,7 @@ pub enum Function {
     /// Order book heatmap or footprint (`HEAT`, `FOOT ETH HL`).
     OrderFlow {
         view: crate::app::FlowView,
-        venue: Option<tr_flow::Exchange>,
+        venue: Option<hd_flow::Exchange>,
         coin: Option<String>,
     },
     /// Prediction markets, with an optional search.
@@ -300,13 +300,13 @@ pub enum Function {
 }
 
 /// `[COIN] [VENUE]` in either order (`ETH`, `HL`, `SOL BIN`).
-fn coin_venue(rest: &[&str]) -> (Option<String>, Option<tr_flow::Exchange>) {
+fn coin_venue(rest: &[&str]) -> (Option<String>, Option<hd_flow::Exchange>) {
     let mut coin = None;
     let mut venue = None;
     for w in rest {
-        match tr_flow::Exchange::parse(w) {
+        match hd_flow::Exchange::parse(w) {
             Some(v) if venue.is_none() => venue = Some(v),
-            _ if coin.is_none() => coin = Some(tr_flow::venue::coin_of_key(w)),
+            _ if coin.is_none() => coin = Some(hd_flow::venue::coin_of_key(w)),
             _ => {}
         }
     }
@@ -401,10 +401,10 @@ fn parse_function(head: &str, rest: &[&str]) -> Option<Function> {
         },
         "RANGE" => Function::Range(Range::parse(rest.first()?)?),
         "DERIV" | "DERV" | "PERPS" | "PERP" | "FUNDING" | "OI" => {
-            Function::Deriv(rest.first().map(|c| tr_flow::venue::coin_of_key(c)))
+            Function::Deriv(rest.first().map(|c| hd_flow::venue::coin_of_key(c)))
         }
         "LIQ" | "LIQS" | "LIQUIDATIONS" | "REKT" => {
-            Function::Liquidations(rest.first().map(|c| tr_flow::venue::coin_of_key(c)))
+            Function::Liquidations(rest.first().map(|c| hd_flow::venue::coin_of_key(c)))
         }
         "HEAT" | "HEATMAP" | "BOOKMAP" | "FOOT" | "FOOTPRINT" | "CVD" => {
             let view = if matches!(up.as_str(), "HEAT" | "HEATMAP" | "BOOKMAP") {
@@ -420,11 +420,11 @@ fn parse_function(head: &str, rest: &[&str]) -> Option<Function> {
         "HLTOP" | "LEADERBOARD" | "LEADERS" | "HLLB" => Function::HlLeaders { vaults: false },
         "VAULTS" | "HLVAULTS" => Function::HlLeaders { vaults: true },
         "HLPOS" | "WHALES" | "POSITIONING" | "COHORTS" => {
-            Function::HlPositioning(rest.first().map(|c| tr_flow::venue::coin_of_key(c)))
+            Function::HlPositioning(rest.first().map(|c| hd_flow::venue::coin_of_key(c)))
         }
-        "PRINTS" | "WHALEPRINTS" | "BLOCKS" => Function::Prints(rest.first().map(|c| tr_flow::venue::coin_of_key(c))),
+        "PRINTS" | "WHALEPRINTS" | "BLOCKS" => Function::Prints(rest.first().map(|c| hd_flow::venue::coin_of_key(c))),
         "OFLOW" | "OPTFLOW" | "OPTIONSFLOW" => {
-            Function::OptionFlow(rest.first().map(|c| tr_flow::venue::coin_of_key(c)))
+            Function::OptionFlow(rest.first().map(|c| hd_flow::venue::coin_of_key(c)))
         }
         // Timeframes win where spellings overlap (`1D`, `1M`); otherwise try a range (`5D`, `YTD`),
         // then the indicator catalog (`RSI`, `BB 20 2.5`).
@@ -557,10 +557,10 @@ fn describe(f: &Function) -> String {
             venue.map(|v| format!(" on {}", v.label())).unwrap_or_default()
         ),
         Function::HlWallet(a) if a.trim().is_empty() => "Hyperliquid wallet tracker".into(),
-        Function::HlWallet(a) => match tr_flow::hyperliquid::parse_address(a) {
+        Function::HlWallet(a) => match hd_flow::hyperliquid::parse_address(a) {
             Some(a) => format!(
                 "Hyperliquid wallet {}: positions, liquidation prices, fills",
-                tr_flow::hyperliquid::short_address(&a)
+                hd_flow::hyperliquid::short_address(&a)
             ),
             None => "Hyperliquid wallet: expects a 0x… address".into(),
         },
@@ -602,7 +602,7 @@ fn describe(f: &Function) -> String {
             };
             let mut s = format!("Order ticket: {side}");
             if let Some(u) = t.units {
-                s += &format!(" {}", tr_broker::trading::fmt_units(u));
+                s += &format!(" {}", hd_broker::trading::fmt_units(u));
             }
             if let Some(n) = t.notional {
                 s += &format!(" ${n:.2} of");
@@ -821,7 +821,7 @@ mod tests {
     /// spelling shadows it.
     #[test]
     fn every_indicator_code_parses_to_its_indicator() {
-        for def in tr_core::indicators::registry::all() {
+        for def in hd_core::indicators::registry::all() {
             for code in std::iter::once(&def.code).chain(def.aliases) {
                 match parse(code) {
                     Some(Command::Function(Function::Indicator(s))) => assert_eq!(s.code, def.code, "{code}"),

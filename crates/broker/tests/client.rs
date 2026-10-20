@@ -4,11 +4,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use hd_broker::snaptrade::signature;
+use hd_broker::{Credentials, InstrumentKind, SnapTrade};
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tr_broker::snaptrade::signature;
-use tr_broker::{Credentials, InstrumentKind, SnapTrade};
 
 const CONSUMER_KEY: &str = "test-consumer-key-0123456789";
 const ACCT_A: &str = "917c8734-8470-4a3e-a18f-57c3f2ee6631";
@@ -93,7 +93,7 @@ async fn mock(seen: Arc<Mutex<Vec<Seen>>>, failures: Arc<Mutex<Vec<String>>>) ->
                     || path.starts_with("/connection/")
                     || path == "/snapTrade/login";
                 if user_scoped
-                    && (param("userId").as_deref() != Some("terminal-rs-test")
+                    && (param("userId").as_deref() != Some("hyperdesk-test")
                         || param("userSecret").as_deref() != Some("s3cr3t/+="))
                 {
                     fail("missing or wrong user credentials".into());
@@ -156,7 +156,7 @@ fn creds() -> Credentials {
     Credentials {
         client_id: "TEST-CLIENT".into(),
         consumer_key: CONSUMER_KEY.into(),
-        user_id: "terminal-rs-test".into(),
+        user_id: "hyperdesk-test".into(),
         user_secret: "s3cr3t/+=".into(),
     }
 }
@@ -244,8 +244,8 @@ async fn registers_a_user_opens_the_portal_and_disconnects() {
     let partner =
         SnapTrade::with_base(Credentials { user_id: String::new(), user_secret: String::new(), ..creds() }, &base)
             .unwrap();
-    let (id, secret) = partner.register_user("terminal-rs-test").await.unwrap();
-    assert_eq!((id.as_str(), secret.as_str()), ("terminal-rs-test", "fresh-secret"));
+    let (id, secret) = partner.register_user("hyperdesk-test").await.unwrap();
+    assert_eq!((id.as_str(), secret.as_str()), ("hyperdesk-test", "fresh-secret"));
 
     let client = SnapTrade::with_base(creds(), &base).unwrap();
     let url = client.connection_portal_url(true, None).await.unwrap();

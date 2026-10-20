@@ -1,4 +1,4 @@
-//! Deterministic simulated data for offline use (`TR_PROVIDER=sample`): every structure is
+//! Deterministic simulated data for offline use (`HD_PROVIDER=sample`): every structure is
 //! flagged `simulated` so panes can label it.
 
 use std::sync::Arc;

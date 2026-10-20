@@ -1,12 +1,12 @@
-; Inno Setup script for terminal-rs (built by scripts\package-windows.ps1, which passes
+; Inno Setup script for Hyperdesk (built by scripts\package-windows.ps1, which passes
 ; AppVersion, SourceDir and OutputDir). Installs per user, so no administrator rights are
-; needed; settings, layouts and caches live in %APPDATA%\terminal-rs and are kept on uninstall.
+; needed; settings, layouts and caches live in %APPDATA%\Hyperdesk and are kept on uninstall.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
 #ifndef SourceDir
-  #define SourceDir "..\..\dist\terminal-rs"
+  #define SourceDir "..\..\dist\hyperdesk"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\..\dist"
@@ -14,19 +14,19 @@
 
 [Setup]
 AppId={{6F1C3A52-8E0B-4C51-9B7A-2D5E7C1F4A90}
-AppName=terminal-rs
+AppName=Hyperdesk
 AppVersion={#AppVersion}
-AppPublisher=terminal-rs contributors
-DefaultDirName={localappdata}\Programs\terminal-rs
-DefaultGroupName=terminal-rs
+AppPublisher=Hyperdesk
+DefaultDirName={localappdata}\Programs\hyperdesk
+DefaultGroupName=Hyperdesk
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
-OutputBaseFilename=terminal-rs-{#AppVersion}-setup-x64
+OutputBaseFilename=hyperdesk-{#AppVersion}-setup-x64
 SetupIconFile=..\..\app\assets\icon.ico
-UninstallDisplayIcon={app}\terminal-rs.exe
+UninstallDisplayIcon={app}\hyperdesk.exe
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -38,8 +38,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
 [Icons]
-Name: "{group}\terminal-rs"; Filename: "{app}\terminal-rs.exe"
-Name: "{userdesktop}\terminal-rs"; Filename: "{app}\terminal-rs.exe"; Tasks: desktopicon
+Name: "{group}\Hyperdesk"; Filename: "{app}\hyperdesk.exe"
+Name: "{userdesktop}\Hyperdesk"; Filename: "{app}\hyperdesk.exe"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\terminal-rs.exe"; Description: "{cm:LaunchProgram,terminal-rs}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\hyperdesk.exe"; Description: "{cm:LaunchProgram,Hyperdesk}"; Flags: nowait postinstall skipifsilent

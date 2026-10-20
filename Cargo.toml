@@ -9,13 +9,13 @@ edition = "2024"
 rust-version = "1.85"
 
 [workspace.dependencies]
-tr-core = { path = "crates/core" }
-tr-broker = { path = "crates/broker" }
-tr-congress = { path = "crates/congress" }
-tr-data = { path = "crates/data" }
-tr-flow = { path = "crates/flow" }
-tr-chart = { path = "crates/chart" }
-tr-macos = { path = "crates/macos" }
+hd-core = { path = "crates/core" }
+hd-broker = { path = "crates/broker" }
+hd-congress = { path = "crates/congress" }
+hd-data = { path = "crates/data" }
+hd-flow = { path = "crates/flow" }
+hd-chart = { path = "crates/chart" }
+hd-macos = { path = "crates/macos" }
 anyhow = "1"
 thiserror = "2"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "serde"] }

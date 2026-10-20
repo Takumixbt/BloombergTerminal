@@ -66,7 +66,7 @@ design and layout as proprietary, so only that one-line feature list was used.
 
 | Gambit feature | Here | Status |
 |---|---|---|
-| Live charts, news, equities and crypto | Upstream terminal-rs | Done upstream |
+| Live charts, news, equities and crypto | Upstream hyperdesk | Done upstream |
 | Options flow | `OFLOW`: Deribit BTC/ETH trades, blocks, premiums, put/call | Done for crypto; no free US equity flow source |
 | On-chain data | Hyperliquid wallets, positioning and prints | Done (Hyperliquid) |
 | Non-custodial Hyperliquid order ticket | — | Not done (below) |
@@ -93,7 +93,7 @@ orders, and the build environment could not reach Hyperliquid to test it.
 1. **Recorder**: persist funding/OI snapshots and trades to SQLite (the bar cache already
    exists) so history goes beyond what the venues serve and footprints survive restarts.
 2. **Derivatives on the chart**: OI, funding, CVD and liquidation markers as chart sub-panes
-   (the chart already supports oscillator panes; feed them from `tr-flow`).
+   (the chart already supports oscillator panes; feed them from `hd-flow`).
 3. **Spot vs perp CVD** (OpenMarket's "is it spot- or perp-led" view): add Binance and
    Coinbase spot trade streams next to the perp stream.
 4. **Hyperliquid HIP-3** markets (`perpDexs`, `metaAndAssetCtxs` with `dex`), and Hyperliquid

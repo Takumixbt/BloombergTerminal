@@ -1,12 +1,12 @@
 //! Frame-time benchmarks: build draw commands and render 1M-bar charts offscreen.
-//! Run with `cargo bench -p tr-chart --bench frame`.
+//! Run with `cargo bench -p hd-chart --bench frame`.
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use tr_chart::gpu::{Frame, LineKind, Style};
-use tr_chart::headless::Headless;
-use tr_chart::scene::{ChartType, Overlay, PricePane, SeriesGpu, line_ref, price_pane};
-use tr_chart::viewport::Viewport;
-use tr_core::{Timeframe, indicators, sample};
+use hd_chart::gpu::{Frame, LineKind, Style};
+use hd_chart::headless::Headless;
+use hd_chart::scene::{ChartType, Overlay, PricePane, SeriesGpu, line_ref, price_pane};
+use hd_chart::viewport::Viewport;
+use hd_core::{Timeframe, indicators, sample};
 
 fn bench(c: &mut Criterion) {
     let Some(mut h) = Headless::new(1600, 900) else {

@@ -8,11 +8,11 @@ cd "$(dirname "$0")/.."
 target=x86_64-pc-windows-gnu
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 rustup target add "$target" >/dev/null
-cargo build --release --target "$target" -p terminal-rs
-stage=dist/terminal-rs
+cargo build --release --target "$target" -p hyperdesk
+stage=dist/hyperdesk
 rm -rf "$stage" && mkdir -p "$stage"
-cp "target/$target/release/terminal-rs.exe" README.md NOTICE.md docs/DATA_SOURCES.md "$stage/"
+cp "target/$target/release/hyperdesk.exe" README.md NOTICE.md docs/DATA_SOURCES.md "$stage/"
 # The GNU toolchain embeds the release profile's debug info in the exe; strip it.
-x86_64-w64-mingw32-strip "$stage/terminal-rs.exe"
-(cd dist && rm -f "terminal-rs-$version-windows-x64-gnu.zip" && zip -qr "terminal-rs-$version-windows-x64-gnu.zip" terminal-rs)
-echo "dist/terminal-rs-$version-windows-x64-gnu.zip"
+x86_64-w64-mingw32-strip "$stage/hyperdesk.exe"
+(cd dist && rm -f "hyperdesk-$version-windows-x64-gnu.zip" && zip -qr "hyperdesk-$version-windows-x64-gnu.zip" hyperdesk)
+echo "dist/hyperdesk-$version-windows-x64-gnu.zip"

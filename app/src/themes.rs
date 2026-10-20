@@ -1,4 +1,4 @@
-//! Themes: named bundles of colours, fonts and density. Eight are built in; custom themes
+//! Themes: named bundles of colours, fonts and density. Nine are built in; custom themes
 //! are TOML (or JSON) files in `<data dir>/themes/`, so they can be shared, hand-edited,
 //! imported and exported. A file only needs the fields it changes: anything missing is
 //! filled from the built-in dark or light base, chosen by its `dark` flag.
@@ -208,6 +208,46 @@ fn merge(base: &mut serde_json::Value, over: serde_json::Value) {
 
 fn fonts(ui: UiFont, mono: MonoFont, scale: f32) -> ThemeFonts {
     ThemeFonts { ui, mono, scale }
+}
+
+/// The signature look: gold tickers on near-black panels with a mint accent.
+pub fn hyperdesk() -> Theme {
+    Theme {
+        name: "Hyperdesk".into(),
+        dark: true,
+        colors: ThemeColors {
+            background: Hex::rgb(11, 15, 17),
+            sidebar: Hex::rgba(12, 18, 20, 170),
+            panel: Hex::rgb(6, 9, 11),
+            panel_header: Hex::rgb(17, 24, 27),
+            border: Hex::rgba(80, 227, 194, 30),
+            grid: Hex::rgb(22, 30, 33),
+            text: Hex::rgb(232, 240, 238),
+            muted: Hex::rgb(126, 146, 146),
+            highlight: Hex::rgb(255, 196, 77),
+            highlight_dim: Hex::rgb(176, 132, 46),
+            info: Hex::rgb(110, 200, 255),
+            control: Hex::rgba(80, 227, 194, 16),
+            control_hover: Hex::rgba(80, 227, 194, 32),
+            accent: Some(Hex::rgb(80, 227, 194)),
+            up: Hex::rgb(38, 214, 128),
+            down: Hex::rgb(255, 84, 96),
+            candle_up: Hex::rgb(38, 214, 128),
+            candle_down: Hex::rgb(255, 84, 96),
+            series: [
+                Hex::rgb(80, 227, 194),
+                Hex::rgb(255, 84, 140),
+                Hex::rgb(255, 196, 77),
+                Hex::rgb(110, 200, 255),
+                Hex::rgb(186, 160, 255),
+                Hex::rgb(255, 140, 60),
+            ],
+        },
+        fonts: fonts(UiFont::System, MonoFont::System, 1.0),
+        density: Density::Regular,
+        builtin: true,
+        source: None,
+    }
 }
 
 /// The original dark look: macOS-style chrome around near-black data panels.
@@ -532,6 +572,7 @@ fn monokai() -> Theme {
 /// The themes that ship with the app, in display order.
 pub fn builtins() -> Vec<Theme> {
     vec![
+        hyperdesk(),
         terminal_dark(),
         terminal_light(),
         bloomberg(),
@@ -688,7 +729,7 @@ mod tests {
     #[test]
     fn builtins_are_distinct_and_readable() {
         let all = builtins();
-        assert_eq!(all.len(), 8);
+        assert_eq!(all.len(), 9);
         for (i, t) in all.iter().enumerate() {
             assert!(t.builtin);
             assert!(all[i + 1..].iter().all(|o| !o.name.eq_ignore_ascii_case(&t.name)), "duplicate {}", t.name);
@@ -738,10 +779,10 @@ mod tests {
 
     #[test]
     fn store_saves_lists_deletes_and_resolves_collisions() {
-        let dir = std::env::temp_dir().join(format!("tr-themes-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hd-themes-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let store = ThemeStore::new(dir.clone());
-        assert_eq!(store.load_all().len(), 8);
+        assert_eq!(store.load_all().len(), 9);
         let mut mine = Theme { name: "Desk".into(), builtin: false, source: None, ..nord() };
         mine.colors.up = Hex::rgb(1, 2, 3);
         store.save(&mine).unwrap();
@@ -749,7 +790,7 @@ mod tests {
         // A hand-dropped JSON file reusing a built-in name gets a suffix.
         std::fs::write(dir.join("x.json"), r##"{"name":"Nord","colors":{"down":"#ff00ff"}}"##).unwrap();
         let all = store.load_all();
-        assert_eq!(all.len(), 10);
+        assert_eq!(all.len(), 11);
         assert_eq!(find(&all, "Desk").unwrap().colors.up, Hex::rgb(1, 2, 3));
         let copy = find(&all, "Nord (Custom)").unwrap();
         assert_eq!(copy.colors.down, Hex::rgb(255, 0, 255));
@@ -771,7 +812,7 @@ mod tests {
         store.delete(find(&all, "Nord (Custom)").unwrap()).unwrap();
         assert!(store.delete(&desk).is_err());
         assert!(store.delete(&nord()).is_err());
-        assert_eq!(store.load_all().len(), 8);
+        assert_eq!(store.load_all().len(), 9);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

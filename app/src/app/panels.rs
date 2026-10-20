@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use egui::{Align2, Color32, Rect, RichText, Sense, Stroke, Ui, UiBuilder, pos2, vec2};
-use tr_data::OrderBook;
+use hd_data::OrderBook;
 
 use super::{PaneKind, TerminalApp};
 use crate::congress_view::{self, Action};
@@ -165,7 +165,7 @@ impl TerminalApp {
         let mut remove = None;
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             for s in &self.watchlist {
-                let sec = tr_data::security(s);
+                let sec = hd_data::security(s);
                 let (r, resp) = ui.allocate_exact_size(vec2(w, row_h), Sense::click());
                 widgets::hover_wash(ui, r, &resp, false);
                 let p = ui.painter();
@@ -207,7 +207,7 @@ impl TerminalApp {
                         p.text(pos2(col(r, 4), r.center().y), Align2::RIGHT_CENTER, "…", mono(12.5), muted());
                     }
                 }
-                let tradable = matches!(sec.class, tr_core::AssetClass::Equity | tr_core::AssetClass::Etf);
+                let tradable = matches!(sec.class, hd_core::AssetClass::Equity | hd_core::AssetClass::Etf);
                 let pills = if tradable { widgets::buy_sell_pills().to_vec() } else { Vec::new() };
                 let tips = [format!("Buy {} (⇧B)", sec.ticker), format!("Sell {} (⇧S)", sec.ticker)];
                 let tips: Vec<&str> = tips.iter().map(String::as_str).collect();
@@ -258,7 +258,7 @@ fn news(ui: &mut Ui, n: &mut super::NewsPane, offline: bool) -> Option<bool> {
     let mut refresh = None;
     ui.horizontal_wrapped(|ui| {
         let title = match &n.symbol {
-            Some(s) => format!("{} headlines", tr_data::security(s).key()),
+            Some(s) => format!("{} headlines", hd_data::security(s).key()),
             None => "Top market headlines".into(),
         };
         ui.label(RichText::new(title).font(ui_font(12.5)).color(text()));
@@ -280,7 +280,7 @@ fn news(ui: &mut Ui, n: &mut super::NewsPane, offline: bool) -> Option<bool> {
     }
     if n.items.is_empty() && !n.loading {
         let msg = if offline {
-            "No headlines in offline sample mode (TR_PROVIDER=sample)."
+            "No headlines in offline sample mode (HD_PROVIDER=sample)."
         } else {
             "No headlines for this security right now."
         };
@@ -351,7 +351,7 @@ fn fmt_size(q: f64) -> String {
 /// Price ladder: asks above, bids below, depth bars by cumulative size.
 fn order_book(ui: &mut Ui, b: &mut super::BookPane) -> Option<Action> {
     let mut action = None;
-    let key = tr_data::security(&b.symbol);
+    let key = hd_data::security(&b.symbol);
     let book: Option<OrderBook> = b.book.as_ref().map(|x| x.grouped(b.group));
     ui.horizontal_wrapped(|ui| {
         let r = ui.label(RichText::new(&key.ticker).font(mono(13.0)).color(amber())).interact(Sense::click());

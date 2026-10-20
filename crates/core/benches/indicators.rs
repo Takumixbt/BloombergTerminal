@@ -1,7 +1,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
+use hd_core::indicators::registry::{self, Input};
+use hd_core::{Timeframe, indicators, sample};
 use std::hint::black_box;
-use tr_core::indicators::registry::{self, Input};
-use tr_core::{Timeframe, indicators, sample};
 
 fn bench(c: &mut Criterion) {
     let bars = sample::generate("BENCH", Timeframe::M1, 1_000_000, 1_790_000_000);

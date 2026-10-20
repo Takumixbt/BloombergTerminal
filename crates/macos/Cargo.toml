@@ -1,6 +1,6 @@
 [package]
-name = "tr-macos"
-description = "macOS window chrome for terminal-rs: unified toolbar, vibrancy, accent colour"
+name = "hd-macos"
+description = "macOS window chrome for Hyperdesk: unified toolbar, vibrancy, accent colour"
 version.workspace = true
 edition.workspace = true
 

@@ -1,11 +1,11 @@
 //! Parser tests against real filings captured from the official sources.
 
 use chrono::{Datelike, NaiveDate};
-use tr_congress::Chamber;
-use tr_congress::house::{self, PdfError};
-use tr_congress::model::{AmountRange, Party, TxType};
-use tr_congress::roster::{self, Roster};
-use tr_congress::senate::{self, ReportKind};
+use hd_congress::Chamber;
+use hd_congress::house::{self, PdfError};
+use hd_congress::model::{AmountRange, Party, TxType};
+use hd_congress::roster::{self, Roster};
+use hd_congress::senate::{self, ReportKind};
 
 const FIX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 

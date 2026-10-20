@@ -319,8 +319,8 @@ impl TerminalApp {
             _ => {}
         }
         self.focused_symbol()
-            .filter(|s| tr_data::security(s).class == tr_core::AssetClass::Crypto)
-            .map_or_else(|| "BTC".into(), |s| tr_flow::venue::coin_of_key(&s))
+            .filter(|s| hd_data::security(s).class == hd_core::AssetClass::Crypto)
+            .map_or_else(|| "BTC".into(), |s| hd_flow::venue::coin_of_key(&s))
     }
 
     pub(super) fn focused_symbol(&self) -> Option<String> {
@@ -341,9 +341,9 @@ impl TerminalApp {
 
     /// The focused security if it has listed options (US equity, ETF, index), else AAPL.
     pub(super) fn optionable_symbol(&self) -> String {
-        use tr_core::AssetClass as C;
+        use hd_core::AssetClass as C;
         self.focused_symbol()
-            .filter(|s| matches!(tr_data::security(s).class, C::Equity | C::Etf | C::Index))
+            .filter(|s| matches!(hd_data::security(s).class, C::Equity | C::Etf | C::Index))
             .unwrap_or_else(|| "AAPL US Equity".into())
     }
 
@@ -476,7 +476,7 @@ impl TerminalApp {
     /// Point a symbol-driven pane at `symbol`. Returns whether it follows symbols.
     pub(super) fn set_pane_symbol(&mut self, i: usize, symbol: &str) -> bool {
         let id = self.panes[i].id;
-        let key = tr_data::security(symbol).key();
+        let key = hd_data::security(symbol).key();
         match &mut self.panes[i].kind {
             PaneKind::Chart(c) => {
                 if c.symbol != key {
@@ -507,20 +507,20 @@ impl TerminalApp {
                 }
             }
             // Crypto flow panes follow crypto keys only.
-            PaneKind::Flow(f) if tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
+            PaneKind::Flow(f) if hd_data::security(&key).class == hd_core::AssetClass::Crypto => {
                 f.retarget(&key, f.venue);
             }
-            PaneKind::Deriv(d) if d.coin.is_some() && tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
-                d.set_coin(Some(tr_flow::venue::coin_of_key(&key)));
+            PaneKind::Deriv(d) if d.coin.is_some() && hd_data::security(&key).class == hd_core::AssetClass::Crypto => {
+                d.set_coin(Some(hd_flow::venue::coin_of_key(&key)));
             }
-            PaneKind::Liq(l) if l.coin.is_some() && tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
-                l.coin = Some(tr_flow::venue::coin_of_key(&key));
+            PaneKind::Liq(l) if l.coin.is_some() && hd_data::security(&key).class == hd_core::AssetClass::Crypto => {
+                l.coin = Some(hd_flow::venue::coin_of_key(&key));
             }
-            PaneKind::HlPositioning(p) if tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
-                p.coin = tr_flow::venue::coin_of_key(&key);
+            PaneKind::HlPositioning(p) if hd_data::security(&key).class == hd_core::AssetClass::Crypto => {
+                p.coin = hd_flow::venue::coin_of_key(&key);
             }
-            PaneKind::Prints(p) if p.coin.is_some() && tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
-                p.coin = Some(tr_flow::venue::coin_of_key(&key));
+            PaneKind::Prints(p) if p.coin.is_some() && hd_data::security(&key).class == hd_core::AssetClass::Crypto => {
+                p.coin = Some(hd_flow::venue::coin_of_key(&key));
             }
             _ => return false,
         }
@@ -534,7 +534,7 @@ impl TerminalApp {
                 self.set_pane_symbol(i, symbol);
             }
         }
-        self.status = format!("{} ({} link)", tr_data::security(symbol).key(), link.label());
+        self.status = format!("{} ({} link)", hd_data::security(symbol).key(), link.label());
     }
 
     pub(super) fn set_link(&mut self, id: PaneId, link: Option<Link>) {
@@ -560,7 +560,7 @@ impl TerminalApp {
     /// Load a security: into the focused pane when it follows symbols (and its link group),
     /// else into the focused pane's link group, else into a chart.
     pub(super) fn open_security(&mut self, symbol: &str) {
-        let key = tr_data::security(symbol).key();
+        let key = hd_data::security(symbol).key();
         if let Some(i) = self.idx(self.focus) {
             let link = self.panes[i].link;
             if self.panes[i].kind.follows_symbol() {
@@ -693,9 +693,9 @@ impl TerminalApp {
         let words: Vec<&str> = spec.split_whitespace().collect();
         let head = words.first().map(|w| w.to_ascii_uppercase()).unwrap_or_else(|| "CHART".into());
         let given = (words.len() > 1)
-            .then(|| tr_core::Security::resolve_tokens(&words[1..]).map(|(s, _)| s.key()))
+            .then(|| hd_core::Security::resolve_tokens(&words[1..]).map(|(s, _)| s.key()))
             .flatten()
-            .or(symbol.map(|s| tr_data::security(s).key()));
+            .or(symbol.map(|s| hd_data::security(s).key()));
         let current = given.clone().or_else(|| self.focused_symbol());
         let d = &self.prefs.panels;
         Some(match head.as_str() {
@@ -708,7 +708,7 @@ impl TerminalApp {
             "BOOK" | "OB" | "DEPTH" | "DOM" => {
                 // Default to a market with a public book.
                 let sym = given
-                    .or(current.filter(|s| tr_data::security(s).class == tr_core::AssetClass::Crypto))
+                    .or(current.filter(|s| hd_data::security(s).class == hd_core::AssetClass::Crypto))
                     .unwrap_or_else(|| "BTCUSD Curncy".into());
                 PaneKind::OrderBook(Box::new(BookPane::new(&sym, d.book_depth, 0.0)))
             }
@@ -742,12 +742,12 @@ impl TerminalApp {
             }
             "HEAT" | "HEATMAP" | "FOOT" | "FOOTPRINT" | "CVD" => {
                 let view = if head.starts_with("HEAT") { super::FlowView::Heatmap } else { super::FlowView::Footprint };
-                let coin = words.get(1).map_or_else(|| self.focused_coin(), |w| tr_flow::venue::coin_of_key(w));
+                let coin = words.get(1).map_or_else(|| self.focused_coin(), |w| hd_flow::venue::coin_of_key(w));
                 let venue = words
                     .iter()
                     .skip(1)
-                    .find_map(|w| tr_flow::Exchange::parse(w))
-                    .unwrap_or(tr_flow::Exchange::Binance);
+                    .find_map(|w| hd_flow::Exchange::parse(w))
+                    .unwrap_or(hd_flow::Exchange::Binance);
                 PaneKind::Flow(Box::new(super::flow_view::FlowPane::new(&coin, venue, view, 60)))
             }
             "HLW" | "WALLET" => PaneKind::Wallet(Box::new(super::hl_view::WalletPane::new(
@@ -1512,7 +1512,7 @@ impl TerminalApp {
             let Some(geom) = self.panes[i].window else { continue };
             let title = self.panes[i].display_title();
             let builder = ViewportBuilder::default()
-                .with_title(format!("{title} — terminal-rs"))
+                .with_title(format!("{title} — Hyperdesk"))
                 .with_inner_size([geom.w, geom.h])
                 .with_position([geom.x, geom.y])
                 .with_min_inner_size([320.0, 220.0]);

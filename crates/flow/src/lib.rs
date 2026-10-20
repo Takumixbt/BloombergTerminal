@@ -13,7 +13,7 @@
 //!   leaderboard and vaults, and positioning of the top traders (cohorts, liquidation levels).
 //! - [`prints`]: large Hyperliquid trades with the wallets on both sides.
 //! - [`options_flow`]: Deribit BTC/ETH option trades (premium, IV, blocks) and summaries.
-//! - [`sample`]: deterministic offline data for all of the above (`TR_PROVIDER=sample`).
+//! - [`sample`]: deterministic offline data for all of the above (`HD_PROVIDER=sample`).
 //!
 //! No API keys are needed. Every parser is a pure function over the venue's JSON, tested
 //! against fixtures in `tests/fixtures`; the network code is a thin layer on top.
@@ -61,9 +61,9 @@ pub fn ensure_tls() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 }
 
-/// True when running fully offline on simulated data (`TR_PROVIDER=sample`).
+/// True when running fully offline on simulated data (`HD_PROVIDER=sample`).
 pub fn offline() -> bool {
-    std::env::var("TR_PROVIDER").is_ok_and(|v| v.eq_ignore_ascii_case("sample"))
+    std::env::var("HD_PROVIDER").is_ok_and(|v| v.eq_ignore_ascii_case("sample"))
 }
 
 /// A shared HTTP client for the public venue APIs.
@@ -76,7 +76,7 @@ impl Http {
     pub fn new() -> Result<Self> {
         ensure_tls();
         let client = reqwest::Client::builder()
-            .user_agent(concat!("terminal-rs/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("hyperdesk/", env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(15))
             .build()?;
         Ok(Self { client })

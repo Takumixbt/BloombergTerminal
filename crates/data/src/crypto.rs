@@ -7,10 +7,10 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::DateTime;
 use futures::{SinkExt, StreamExt};
+use hd_core::{Bar, Security, Timeframe, catalog};
 use serde_json::Value;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
-use tr_core::{Bar, Security, Timeframe, catalog};
 
 use crate::{LiveFeed, Quote};
 
@@ -193,7 +193,7 @@ pub struct CryptoProvider {
 impl CryptoProvider {
     pub fn new() -> Result<Self> {
         let client = reqwest::Client::builder()
-            .user_agent(concat!("terminal-rs/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("hyperdesk/", env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(20))
             .build()?;
         Ok(Self { client })
@@ -447,7 +447,7 @@ mod tests {
         assert!(c.bids[0].0 < c.asks[0].0);
         assert_eq!(c.source, "Coinbase");
     }
-    use tr_core::AssetClass;
+    use hd_core::AssetClass;
 
     const FIX: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 

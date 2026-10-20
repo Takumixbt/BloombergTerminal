@@ -1,10 +1,10 @@
 //! Live checks against the real venues (network required):
-//! `cargo test -p tr-flow --test live -- --ignored --nocapture`.
+//! `cargo test -p hd-flow --test live -- --ignored --nocapture`.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use tr_flow::{Exchange, Http, deribit, history, liq, orderflow, perps, polymarket};
+use hd_flow::{Exchange, Http, deribit, history, liq, orderflow, perps, polymarket};
 
 #[tokio::test]
 #[ignore]
@@ -15,7 +15,7 @@ async fn board_from_every_venue() {
         eprintln!("{}: {err}", e.label());
     }
     let btc = b.row("BTC").expect("BTC on the board");
-    eprintln!("BTC OI {} across {:?}", tr_flow::fmt_usd(btc.oi_usd), btc.venues.keys().collect::<Vec<_>>());
+    eprintln!("BTC OI {} across {:?}", hd_flow::fmt_usd(btc.oi_usd), btc.venues.keys().collect::<Vec<_>>());
     assert!(btc.oi_usd > 1e9);
     assert!(btc.venues.len() >= 3, "at least three venues answered");
 }
@@ -57,7 +57,7 @@ async fn streams_deliver() {
 #[ignore]
 async fn hyperliquid_wallets_leaderboard_and_options_flow() {
     let http = Http::new().unwrap();
-    let hl = tr_flow::hyperliquid::Client::new(http.clone());
+    let hl = hd_flow::hyperliquid::Client::new(http.clone());
     let lb = hl.leaderboard().await.unwrap();
     eprintln!("leaderboard: {} wallets, top {}", lb.len(), lb[0].label());
     assert!(lb.len() > 100);
@@ -66,6 +66,6 @@ async fn hyperliquid_wallets_leaderboard_and_options_flow() {
     assert!(pos.wallets > 10, "scanned {} ({} errors)", pos.wallets, pos.errors);
     let _ = hl.fills(&wallets[0]).await.unwrap();
     assert!(!hl.vaults().await.unwrap().is_empty());
-    let trades = tr_flow::options_flow::fetch(&http, "BTC").await.unwrap();
+    let trades = hd_flow::options_flow::fetch(&http, "BTC").await.unwrap();
     assert!(!trades.is_empty());
 }

@@ -9,7 +9,7 @@
 
 use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
-use tr_core::{AssetClass, Bar, Security, Timeframe, catalog};
+use hd_core::{AssetClass, Bar, Security, Timeframe, catalog};
 
 use crate::alpaca::AlpacaProvider;
 use crate::crypto::CryptoProvider;

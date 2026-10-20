@@ -1,11 +1,11 @@
 # Where the data comes from
 
 Every number in the terminal comes from a **free, public source** called directly from your
-machine. There is no terminal-rs server in between, no account, and no API key is required
+machine. There is no hyperdesk server in between, no account, and no API key is required
 (Alpaca and SnapTrade are optional and use your own keys). Nothing is resold or redistributed:
 each install fetches its own data, and you are bound by each source's terms of use.
 
-With `TR_PROVIDER=sample` nothing goes over the network; every pane shows deterministic
+With `HD_PROVIDER=sample` nothing goes over the network; every pane shows deterministic
 simulated data with a **SIMULATED** badge.
 
 ## Markets (charts, quotes, watchlist, world markets)

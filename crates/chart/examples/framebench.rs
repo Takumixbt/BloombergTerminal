@@ -1,15 +1,15 @@
 //! Interactive-style frame-time benchmark: a scripted zoom-out/pan/zoom-in session over
 //! a 1M-bar series, rendered offscreen at 1600x900. Prints percentiles per phase.
 //!
-//! `cargo run --release -p tr-chart --example framebench [bars]`
+//! `cargo run --release -p hd-chart --example framebench [bars]`
 
 use std::time::{Duration, Instant};
 
-use tr_chart::gpu::{Frame, LineKind, Style};
-use tr_chart::headless::Headless;
-use tr_chart::scene::{ChartType, Overlay, PricePane, SeriesGpu, line_ref, price_pane};
-use tr_chart::viewport::Viewport;
-use tr_core::{Timeframe, indicators, sample};
+use hd_chart::gpu::{Frame, LineKind, Style};
+use hd_chart::headless::Headless;
+use hd_chart::scene::{ChartType, Overlay, PricePane, SeriesGpu, line_ref, price_pane};
+use hd_chart::viewport::Viewport;
+use hd_core::{Timeframe, indicators, sample};
 
 fn pct(v: &mut [Duration], p: f64) -> f64 {
     v.sort();

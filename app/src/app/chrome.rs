@@ -7,7 +7,7 @@ use egui::{
     Align2, Color32, CornerRadius, CursorIcon, Id, Key, Modifiers, Rect, RichText, Sense, Shadow, Stroke, StrokeKind,
     Ui, UiBuilder, ViewportCommand, pos2, vec2,
 };
-use tr_data::SearchHit;
+use hd_data::SearchHit;
 
 use super::{PaneKind, TerminalApp};
 use crate::anim;
@@ -20,9 +20,9 @@ use crate::widgets::{self, Icon};
 
 /// Default toolbar height; on macOS it matches a unified `NSToolbar` so the traffic lights
 /// centre in it. The live value comes from [`TerminalApp::toolbar_h`].
-pub const TOOLBAR_H: f32 = if cfg!(target_os = "macos") { tr_macos::TITLEBAR_HEIGHT } else { 34.0 };
+pub const TOOLBAR_H: f32 = if cfg!(target_os = "macos") { hd_macos::TITLEBAR_HEIGHT } else { 34.0 };
 /// Default space kept clear for the traffic lights when the sidebar is collapsed.
-pub const TRAFFIC_INSET: f32 = if cfg!(target_os = "macos") { tr_macos::TRAFFIC_LIGHTS_WIDTH } else { 0.0 };
+pub const TRAFFIC_INSET: f32 = if cfg!(target_os = "macos") { hd_macos::TRAFFIC_LIGHTS_WIDTH } else { 0.0 };
 pub const STATUS_H: f32 = 22.0;
 pub const SIDEBAR_W: f32 = 232.0;
 const ROW_H: f32 = 24.0;
@@ -555,7 +555,7 @@ impl TerminalApp {
             section(ui, "Watchlist");
             let mut remove = None;
             for key in &self.watchlist {
-                let sec = tr_data::security(key);
+                let sec = hd_data::security(key);
                 let resp = row_frame(ui, false);
                 let r = resp.rect;
                 let pt = ui.painter();

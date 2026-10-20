@@ -1,7 +1,7 @@
-//! Network tests against Yahoo; run with `cargo test -p tr-data -- --ignored`.
-use tr_core::Timeframe;
-use tr_data::MarketData;
-use tr_data::yahoo::YahooProvider;
+//! Network tests against Yahoo; run with `cargo test -p hd-data -- --ignored`.
+use hd_core::Timeframe;
+use hd_data::MarketData;
+use hd_data::yahoo::YahooProvider;
 
 #[tokio::test]
 #[ignore = "network"]
@@ -19,10 +19,10 @@ async fn yahoo_history_and_paging() {
 }
 
 mod markets {
+    use hd_core::Timeframe;
+    use hd_data::MarketData;
+    use hd_data::markets::Markets;
     use std::time::Duration;
-    use tr_core::Timeframe;
-    use tr_data::MarketData;
-    use tr_data::markets::Markets;
 
     fn m() -> Markets {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();

@@ -4,9 +4,9 @@
 use std::collections::BTreeMap;
 
 use egui::{Key, Modifiers};
+use hd_chart::scene::ChartType;
+use hd_core::Timeframe;
 use serde::{Deserialize, Serialize};
-use tr_chart::scene::ChartType;
-use tr_core::Timeframe;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum ThemeMode {
@@ -157,7 +157,7 @@ impl Default for Appearance {
     fn default() -> Self {
         Self {
             theme: crate::themes::SYSTEM.into(),
-            dark_theme: "Terminal Dark".into(),
+            dark_theme: "Hyperdesk".into(),
             light_theme: "Terminal Light".into(),
             mode: ThemeMode::System,
             accent: None,
@@ -833,7 +833,7 @@ mod tests {
         // Older or hand-written files with only some fields still load.
         let partial: Prefs = serde_json::from_str(r#"{"appearance":{"theme":"Monokai"}}"#).unwrap();
         assert_eq!(partial.appearance.theme, "Monokai");
-        assert_eq!(partial.appearance.dark_theme, "Terminal Dark");
+        assert_eq!(partial.appearance.dark_theme, "Hyperdesk");
         assert_eq!(partial.panels, PanelDefaults::default());
         let dir = std::env::temp_dir().join(format!("tr-prefs-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

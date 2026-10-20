@@ -2,8 +2,8 @@
 //!
 //! The partner keys (`clientId`, `consumerKey`) and the per-user `userId`/`userSecret` are
 //! stored together as one small JSON document: in the macOS Keychain (generic password,
-//! service `terminal-rs`, account `snaptrade`), the Windows Credential Manager (generic
-//! credential `terminal-rs/snaptrade`), or elsewhere in an owner-only (0600) file in the
+//! service `hyperdesk`, account `snaptrade`), the Windows Credential Manager (generic
+//! credential `hyperdesk/snaptrade`), or elsewhere in an owner-only (0600) file in the
 //! app's data directory. `SNAPTRADE_*` environment variables override stored values
 //! field by field. Nothing is ever written inside the repository.
 
@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-pub const KEYCHAIN_SERVICE: &str = "terminal-rs";
+pub const KEYCHAIN_SERVICE: &str = "hyperdesk";
 pub const KEYCHAIN_ACCOUNT: &str = "snaptrade";
 
 /// Environment variables that override stored credentials.
@@ -116,10 +116,10 @@ pub struct SecretStore {
 
 impl SecretStore {
     /// The platform store: the Keychain on macOS or the Credential Manager on Windows (unless
-    /// `TR_SECRET_STORE=file`), otherwise `<data_dir>/secrets/snaptrade.json`.
+    /// `HD_SECRET_STORE=file`), otherwise `<data_dir>/secrets/snaptrade.json`.
     pub fn platform(data_dir: &Path) -> Self {
         let file = Backend::File(data_dir.join("secrets").join("snaptrade.json"));
-        let force_file = std::env::var("TR_SECRET_STORE").is_ok_and(|v| v.eq_ignore_ascii_case("file"));
+        let force_file = std::env::var("HD_SECRET_STORE").is_ok_and(|v| v.eq_ignore_ascii_case("file"));
         let os_store = cfg!(any(target_os = "macos", windows));
         let backend = if os_store && !force_file { Backend::Keychain } else { file };
         Self { backend }
@@ -235,7 +235,7 @@ mod keychain {
     }
 }
 
-/// The Windows Credential Manager, as a generic credential named `terminal-rs/snaptrade`
+/// The Windows Credential Manager, as a generic credential named `hyperdesk/snaptrade`
 /// (per user, persisted on this machine, not roamed).
 #[cfg(windows)]
 mod keychain {
@@ -344,7 +344,7 @@ mod tests {
         Credentials {
             client_id: "PARTNER-ID".into(),
             consumer_key: "consumer-key-0123456789".into(),
-            user_id: "terminal-rs-1".into(),
+            user_id: "hyperdesk-1".into(),
             user_secret: "user-secret-abcdef".into(),
         }
     }
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn file_store_round_trip_is_private() {
-        let dir = std::env::temp_dir().join(format!("tr-broker-secrets-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("hd-broker-secrets-{}", std::process::id()));
         let store = SecretStore::file(dir.join("secrets/snaptrade.json"));
         assert_eq!(store.load().unwrap(), None);
         let mut c = creds();

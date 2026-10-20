@@ -31,13 +31,13 @@ pub fn open_external(target: impl AsRef<std::ffi::OsStr>) -> std::io::Result<()>
 }
 
 /// Where logs go when there is no console to print to: release builds on Windows run as a
-/// GUI app, so they log to `<data dir>/terminal-rs.log` (`TR_LOG_FILE` overrides; set it to
+/// GUI app, so they log to `<data dir>/hyperdesk.log` (`HD_LOG_FILE` overrides; set it to
 /// an empty value to log to stdout instead).
 pub fn log_file() -> Option<PathBuf> {
-    match std::env::var_os("TR_LOG_FILE") {
+    match std::env::var_os("HD_LOG_FILE") {
         Some(v) if v.is_empty() => None,
         Some(v) => Some(PathBuf::from(v)),
-        None if cfg!(all(windows, not(debug_assertions))) => Some(crate::worker::data_dir().join("terminal-rs.log")),
+        None if cfg!(all(windows, not(debug_assertions))) => Some(crate::worker::data_dir().join("hyperdesk.log")),
         None => None,
     }
 }

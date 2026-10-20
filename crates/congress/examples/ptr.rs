@@ -1,7 +1,7 @@
 //! Parse House PTR PDFs and print the extracted trades: `cargo run --example ptr -- file.pdf`
 fn main() {
     for p in std::env::args().skip(1) {
-        match tr_congress::house::parse_ptr_pdf(&std::fs::read(&p).unwrap()) {
+        match hd_congress::house::parse_ptr_pdf(&std::fs::read(&p).unwrap()) {
             Ok(r) => {
                 for t in r.trades {
                     println!(

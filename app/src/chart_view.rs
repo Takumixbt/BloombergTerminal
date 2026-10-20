@@ -7,14 +7,14 @@ use egui::{
     Align2, Color32, CornerRadius, CursorIcon, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2,
     vec2,
 };
-use tr_chart::drawings::{self, Anchor, Drawing, Shape, Tool};
-use tr_chart::gpu::{ChartCallback, Frame, LineKind, LineRef, Reveal, Style};
-use tr_chart::scale;
-use tr_chart::scene::{self, ChartType, Overlay, PricePane, SeriesGpu};
-use tr_chart::viewport::{PriceScale, Viewport};
-use tr_congress::{Trade, TxType};
-use tr_core::indicators::registry::{self, Category};
-use tr_core::{AssetClass, Bar, Security, Timeframe};
+use hd_chart::drawings::{self, Anchor, Drawing, Shape, Tool};
+use hd_chart::gpu::{ChartCallback, Frame, LineKind, LineRef, Reveal, Style};
+use hd_chart::scale;
+use hd_chart::scene::{self, ChartType, Overlay, PricePane, SeriesGpu};
+use hd_chart::viewport::{PriceScale, Viewport};
+use hd_congress::{Trade, TxType};
+use hd_core::indicators::registry::{self, Category};
+use hd_core::{AssetClass, Bar, Security, Timeframe};
 
 use crate::command::{IndicatorSpec, Range};
 use crate::congress_view::Action;
@@ -121,9 +121,9 @@ impl ChartState {
     pub fn new(id: PaneId, symbol: &str, tf: Timeframe) -> Self {
         Self {
             id,
-            symbol: tr_data::security(symbol).key(),
+            symbol: hd_data::security(symbol).key(),
             tf,
-            chart_type: if tr_data::security(symbol).class == AssetClass::Govt {
+            chart_type: if hd_data::security(symbol).class == AssetClass::Govt {
                 ChartType::Line
             } else {
                 ChartType::Candles
@@ -155,7 +155,7 @@ impl ChartState {
             pending_range: None,
             draw: DrawState::default(),
             hover_marker: None,
-            sec: tr_data::security(symbol),
+            sec: hd_data::security(symbol),
             last_live: None,
             last_indicator_req: None,
             actions: Vec::new(),
@@ -198,7 +198,7 @@ impl ChartState {
     }
 
     pub fn set_symbol(&mut self, symbol: &str, w: &Worker) {
-        let sec = tr_data::security(symbol);
+        let sec = hd_data::security(symbol);
         if sec.class == AssetClass::Govt {
             self.chart_type = ChartType::Line;
         } else if self.sec.class == AssetClass::Govt {
@@ -818,7 +818,7 @@ impl ChartState {
         }
         let frame_no = ui.ctx().cumulative_frame_nr();
         let frame = Frame { pane: self.id * 8, frame_no, cmds: out.cmds };
-        ui.painter().add(tr_chart::egui_wgpu::Callback::new_paint_callback(price_rect, ChartCallback(Arc::new(frame))));
+        ui.painter().add(hd_chart::egui_wgpu::Callback::new_paint_callback(price_rect, ChartCallback(Arc::new(frame))));
 
         // Sub panes.
         let mut sub_rects = Vec::new();
@@ -840,7 +840,7 @@ impl ChartState {
                 }
             }
             let frame = Frame { pane: self.id * 8 + 1 + k as u64, frame_no, cmds: so.cmds };
-            ui.painter().add(tr_chart::egui_wgpu::Callback::new_paint_callback(r, ChartCallback(Arc::new(frame))));
+            ui.painter().add(hd_chart::egui_wgpu::Callback::new_paint_callback(r, ChartCallback(Arc::new(frame))));
             sub_rects.push((r, bi, so.scale));
         }
 
@@ -966,7 +966,7 @@ impl ChartState {
             }
         }
         self.paint_legend(ui, price_rect, hovered_bar.unwrap_or(len.saturating_sub(1)), &sub_rects);
-        if matches!(self.sec.class, tr_core::AssetClass::Equity | tr_core::AssetClass::Etf) {
+        if matches!(self.sec.class, hd_core::AssetClass::Equity | hd_core::AssetClass::Etf) {
             clicked |= self.trade_buttons(ui, plot_all);
         }
 
@@ -1456,7 +1456,7 @@ mod tests {
     #[test]
     fn view_changes_glide_from_what_is_shown() {
         let mut c = ChartState::new(1, "AAPL", Timeframe::D1);
-        c.bars = Arc::new(tr_core::sample::generate("AAPL", Timeframe::D1, 500, 1_790_000_000));
+        c.bars = Arc::new(hd_core::sample::generate("AAPL", Timeframe::D1, 500, 1_790_000_000));
         let shown = Viewport::fit_last(500, 100, 800.0);
         c.viewport = Some(shown);
         c.pan_bars(-20.0);

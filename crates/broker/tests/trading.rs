@@ -4,12 +4,12 @@
 
 use std::sync::{Arc, Mutex};
 
+use hd_broker::snaptrade::signature;
+use hd_broker::trading::{Amount, OrderRequest, OrderType, Side, TimeInForce};
+use hd_broker::{Credentials, SnapTrade};
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tr_broker::snaptrade::signature;
-use tr_broker::trading::{Amount, OrderRequest, OrderType, Side, TimeInForce};
-use tr_broker::{Credentials, SnapTrade};
 
 const CONSUMER_KEY: &str = "trading-test-consumer-key";
 const ACCT: &str = "917c8734-8470-4a3e-a18f-57c3f2ee6631";
@@ -80,7 +80,7 @@ async fn mock(seen: Log, failures: Log) -> String {
                 let body: Option<Value> = (!body.is_empty()).then(|| serde_json::from_slice(&body).unwrap());
                 let sig = headers.iter().find(|(k, _)| k == "signature").map(|(_, v)| v.clone()).unwrap_or_default();
                 let ok = sig == signature(CONSUMER_KEY, path, query, body.as_ref())
-                    && param(query, "userId").as_deref() == Some("terminal-rs-test")
+                    && param(query, "userId").as_deref() == Some("hyperdesk-test")
                     && param(query, "userSecret").as_deref() == Some("s3cr3t");
                 let entry = Seen { method: method.clone(), path: path.to_string(), body: body.clone() };
                 if !ok {
@@ -161,7 +161,7 @@ fn client(base: &str) -> SnapTrade {
     let creds = Credentials {
         client_id: "TEST-CLIENT".into(),
         consumer_key: CONSUMER_KEY.into(),
-        user_id: "terminal-rs-test".into(),
+        user_id: "hyperdesk-test".into(),
         user_secret: "s3cr3t".into(),
     };
     SnapTrade::with_base(creds, base).unwrap()
@@ -238,7 +238,7 @@ async fn reads_trading_capabilities() {
 
 #[tokio::test]
 async fn placement_errors_separate_rejections_from_unknown_outcomes() {
-    use tr_broker::trading::PlaceError;
+    use hd_broker::trading::PlaceError;
     let (seen, failures): (Log, Log) = Default::default();
     let base = mock(seen, failures).await;
     let c = client(&base);
@@ -257,7 +257,7 @@ async fn placement_errors_separate_rejections_from_unknown_outcomes() {
     let dropped = c.place_previewed(&with_id("dropped-trade")).await.unwrap_err();
     assert!(dropped.uncertain(), "a lost response may hide an accepted order: {dropped:?}");
     let mut old = preview.clone();
-    old.created -= chrono::Duration::seconds(tr_broker::trading::PREVIEW_TTL_SECS);
+    old.created -= chrono::Duration::seconds(hd_broker::trading::PREVIEW_TTL_SECS);
     assert!(matches!(c.place_previewed(&old).await, Err(PlaceError::NotSent(_))));
 }
 
@@ -275,7 +275,7 @@ async fn refuses_bad_input_before_sending_anything() {
 
     // An expired preview is never sent.
     let mut preview = c.order_impact(&limit_buy()).await.unwrap();
-    preview.created -= chrono::Duration::seconds(tr_broker::trading::PREVIEW_TTL_SECS);
+    preview.created -= chrono::Duration::seconds(hd_broker::trading::PREVIEW_TTL_SECS);
     assert!(c.place_previewed(&preview).await.unwrap_err().to_string().contains("expired"));
     // Neither is a simulated one.
     let mut sim = c.order_impact(&limit_buy()).await.unwrap();

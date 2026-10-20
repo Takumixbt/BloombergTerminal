@@ -1,4 +1,4 @@
-//! Worker side of the crypto derivatives, order flow and prediction market panes (`tr-flow`).
+//! Worker side of the crypto derivatives, order flow and prediction market panes (`hd-flow`).
 //!
 //! Live streams (liquidations, per-pane trade/depth feeds) hand the UI an `Arc<Mutex<…>>`
 //! that the stream task writes into; the task stops by itself once the UI drops its handle,
@@ -7,14 +7,14 @@
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
-use tr_flow::deribit::TermStructure;
-use tr_flow::history::CoinHistory;
-use tr_flow::hyperliquid::{self, Account, Fill, Leader, Positioning, Vault};
-use tr_flow::liq::{SharedTape, Tape};
-use tr_flow::orderflow::{Flow, SharedFlow};
-use tr_flow::perps::{Board, PerpsClient};
-use tr_flow::polymarket::{self, Detail, Market};
-use tr_flow::{Exchange, sample};
+use hd_flow::deribit::TermStructure;
+use hd_flow::history::CoinHistory;
+use hd_flow::hyperliquid::{self, Account, Fill, Leader, Positioning, Vault};
+use hd_flow::liq::{SharedTape, Tape};
+use hd_flow::orderflow::{Flow, SharedFlow};
+use hd_flow::perps::{Board, PerpsClient};
+use hd_flow::polymarket::{self, Detail, Market};
+use hd_flow::{Exchange, sample};
 
 use super::{PaneId, Response, Shared};
 
@@ -29,10 +29,10 @@ const POSITIONING_TTL: Duration = Duration::from_secs(180);
 /// Wallets scanned for positioning (two info calls' weight each, well inside the limit).
 pub const SCAN_WALLETS: usize = 200;
 
-pub type SharedPrints = tr_flow::prints::SharedTape;
+pub type SharedPrints = hd_flow::prints::SharedTape;
 /// When the leaderboard was fetched, the leaders and the vaults.
 type CachedLeaders = (Instant, Arc<Vec<Leader>>, Vec<Vault>);
-pub type SharedOptionFlow = Arc<Mutex<tr_flow::options_flow::Tape>>;
+pub type SharedOptionFlow = Arc<Mutex<hd_flow::options_flow::Tape>>;
 
 pub enum FlowRequest {
     /// The aggregated derivatives board (cached for a few seconds).
@@ -93,8 +93,8 @@ pub struct FlowShared {
     tape: Mutex<Weak<Mutex<Tape>>>,
     leaders: Mutex<Option<CachedLeaders>>,
     positioning: Mutex<Option<(Instant, Arc<Positioning>)>>,
-    prints: Mutex<Weak<Mutex<tr_flow::prints::Tape>>>,
-    oflow: Mutex<Weak<Mutex<tr_flow::options_flow::Tape>>>,
+    prints: Mutex<Weak<Mutex<hd_flow::prints::Tape>>>,
+    oflow: Mutex<Weak<Mutex<hd_flow::options_flow::Tape>>>,
 }
 
 /// Hand out the shared stream behind `slot`, starting it with `start` if nobody holds it.
@@ -133,7 +133,7 @@ fn now() -> i64 {
 }
 
 pub(super) async fn handle(s: &Shared, req: FlowRequest) {
-    let offline = tr_flow::offline() || s.provider.name().eq_ignore_ascii_case("sample");
+    let offline = hd_flow::offline() || s.provider.name().eq_ignore_ascii_case("sample");
     let send = |r: FlowResponse| s.send(Response::Flow(Box::new(r)));
     match req {
         FlowRequest::Board => {
@@ -160,20 +160,20 @@ pub(super) async fn handle(s: &Shared, req: FlowRequest) {
         }
         FlowRequest::Coin { pane, coin } => {
             let (history, term) = if offline {
-                let term = tr_flow::deribit::supported(&coin).then(|| sample::term_structure(&coin, now()));
+                let term = hd_flow::deribit::supported(&coin).then(|| sample::term_structure(&coin, now()));
                 (sample::history(&coin, now()), term)
             } else {
                 match s.flow.client() {
                     Ok(c) => {
                         let http = c.http().clone();
                         let term = async {
-                            if tr_flow::deribit::supported(&coin) {
-                                Some(tr_flow::deribit::fetch(&http, &coin).await)
+                            if hd_flow::deribit::supported(&coin) {
+                                Some(hd_flow::deribit::fetch(&http, &coin).await)
                             } else {
                                 None
                             }
                         };
-                        tokio::join!(tr_flow::history::fetch(c.http(), &coin), term)
+                        tokio::join!(hd_flow::history::fetch(c.http(), &coin), term)
                     }
                     Err(e) => (CoinHistory { coin: coin.clone(), errors: vec![e], ..Default::default() }, None),
                 }
@@ -211,7 +211,7 @@ pub(super) async fn handle(s: &Shared, req: FlowRequest) {
                                         .map(|c| format!("{c}USDT"))
                                         .collect();
                                 }
-                                tokio::spawn(tr_flow::liq::run(tape.clone(), c.http().clone(), syms));
+                                tokio::spawn(hd_flow::liq::run(tape.clone(), c.http().clone(), syms));
                             }
                             Err(e) => {
                                 if let Ok(mut t) = tape.lock() {
@@ -232,7 +232,7 @@ pub(super) async fn handle(s: &Shared, req: FlowRequest) {
             } else {
                 match s.flow.client() {
                     Ok(c) => {
-                        tokio::spawn(tr_flow::orderflow::run(flow.clone(), c.http().clone()));
+                        tokio::spawn(hd_flow::orderflow::run(flow.clone(), c.http().clone()));
                     }
                     Err(e) => {
                         if let Ok(mut f) = flow.lock() {
@@ -320,7 +320,7 @@ pub(super) async fn handle(s: &Shared, req: FlowRequest) {
                                 .map(String::from)
                                 .to_vec();
                     }
-                    tokio::spawn(tr_flow::prints::run(t, coins));
+                    tokio::spawn(hd_flow::prints::run(t, coins));
                 }
             });
             send(FlowResponse::Prints(tape));
@@ -329,7 +329,7 @@ pub(super) async fn handle(s: &Shared, req: FlowRequest) {
             let client = if offline { None } else { s.flow.client().ok() };
             let tape = shared_stream(&s.flow.oflow, |t| match client {
                 Some(c) => {
-                    tokio::spawn(tr_flow::options_flow::run(t, c.http().clone()));
+                    tokio::spawn(hd_flow::options_flow::run(t, c.http().clone()));
                 }
                 None if offline => {
                     tokio::spawn(sample::run_option_flow(t));

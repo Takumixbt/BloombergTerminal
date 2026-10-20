@@ -1,4 +1,4 @@
-//! Hyperliquid trader intelligence and options flow panes (data from `tr-flow`):
+//! Hyperliquid trader intelligence and options flow panes (data from `hd-flow`):
 //!
 //! - `HLW <address>`: any wallet's account value, positions (size, entry, PnL, ROE,
 //!   liquidation price and distance, leverage, funding) and recent fills; saved wallets, and
@@ -13,10 +13,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use egui::{Align2, Color32, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
+use hd_flow::fmt_usd;
+use hd_flow::hyperliquid::{self, Account, COHORTS, Fill, Leader, Perf, Positioning, Vault, short_address};
+use hd_flow::options_flow::OptionTrade;
 use serde::{Deserialize, Serialize};
-use tr_flow::fmt_usd;
-use tr_flow::hyperliquid::{self, Account, COHORTS, Fill, Leader, Perf, Positioning, Vault, short_address};
-use tr_flow::options_flow::OptionTrade;
 
 use super::flow_view::fmt_price;
 use super::{PaneKind, TerminalApp};
@@ -226,7 +226,7 @@ impl TerminalApp {
 
     pub(super) fn hl_content(&mut self, ui: &mut Ui, i: usize) -> Vec<Action> {
         let hl = &self.hl;
-        let offline = self.provider.eq_ignore_ascii_case("sample") || tr_flow::offline();
+        let offline = self.provider.eq_ignore_ascii_case("sample") || hd_flow::offline();
         match &mut self.panes[i].kind {
             PaneKind::Wallet(w) => wallet(ui, w),
             PaneKind::Leaders(l) => leaders(ui, l, hl.leaders.as_ref(), &hl.vaults, offline),
@@ -276,7 +276,7 @@ fn note(ui: &mut Ui, s: impl Into<String>) {
 
 fn simulated(ui: &mut Ui) {
     ui.label(RichText::new(" SIMULATED ").font(ui_font(10.5)).color(Color32::BLACK).background_color(amber()))
-        .on_hover_text("Offline sample data (TR_PROVIDER=sample).");
+        .on_hover_text("Offline sample data (HD_PROVIDER=sample).");
 }
 
 fn signed(x: f64) -> Color32 {
@@ -883,7 +883,7 @@ fn liq_map(ui: &Ui, rect: Rect, c: &hyperliquid::CoinPositioning) {
             );
         }
     }
-    let step = tr_flow::nice_step((hi - lo) / 6.0);
+    let step = hd_flow::nice_step((hi - lo) / 6.0);
     let mut v = (lo / step).ceil() * step;
     while v <= hi {
         p.text(pos2(rect.left() + 6.0, y(v)), Align2::LEFT_CENTER, fmt_price(v), mono(10.5), muted());
@@ -1153,7 +1153,7 @@ fn option_flow(ui: &mut Ui, o: &mut OptionFlowPane, tape: Option<&SharedOptionFl
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tr_flow::hyperliquid::Position;
+    use hd_flow::hyperliquid::Position;
 
     #[test]
     fn wallet_change_toasts() {

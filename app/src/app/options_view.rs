@@ -2,8 +2,8 @@
 //! volume, open interest, implied volatility and Black-Scholes greeks.
 
 use egui::{Align2, Color32, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
-use tr_core::options::Greeks;
-use tr_data::OptionContract;
+use hd_core::options::Greeks;
+use hd_data::OptionContract;
 
 use super::OptionsPane;
 use crate::anim;
@@ -130,7 +130,7 @@ fn rows(o: &OptionsPane) -> Vec<Row> {
 pub fn options_chain(ui: &mut Ui, o: &mut OptionsPane) -> (Option<Action>, bool) {
     let mut action = None;
     let mut refetch = false;
-    let key = tr_data::security(&o.symbol);
+    let key = hd_data::security(&o.symbol);
     ui.horizontal_wrapped(|ui| {
         let r = ui.label(RichText::new(&key.ticker).font(mono(13.0)).color(amber())).interact(Sense::click());
         if r.clicked() {
@@ -341,7 +341,7 @@ mod tests {
 
     fn pane() -> OptionsPane {
         let mut o = OptionsPane::new("AAPL US Equity", 0, true);
-        let chain = tr_data::sample::simulated_chain("AAPL US Equity", 230.0, None, 1_791_800_000);
+        let chain = hd_data::sample::simulated_chain("AAPL US Equity", 230.0, None, 1_791_800_000);
         o.set_chain(Box::new(chain), 0.04, 1_791_800_000);
         o
     }

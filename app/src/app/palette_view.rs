@@ -2,7 +2,7 @@
 //! from the app's state, the centred search card, and running the picked item.
 
 use egui::{Color32, Id, Key, Modifiers, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, pos2, vec2};
-use tr_core::indicators::registry;
+use hd_core::indicators::registry;
 
 use super::TerminalApp;
 use super::settings_view::SettingsTab;
@@ -227,7 +227,7 @@ fn indicator_items(active: &[IndicatorSpec]) -> Vec<Item> {
 }
 
 fn ticker_item(key: &str) -> Item {
-    let name = tr_core::Security::parse(key).and_then(|s| s.name()).unwrap_or("");
+    let name = hd_core::Security::parse(key).and_then(|s| s.name()).unwrap_or("");
     Item::new(
         Kind::Ticker,
         key,
@@ -285,7 +285,7 @@ impl TerminalApp {
         let q = self.palette.query.trim();
         let offered = |v: &[Item]| v.iter().any(|it| matches!(&it.target, Target::Run(l) if l.eq_ignore_ascii_case(q)));
         if !q.is_empty() {
-            for l in tr_core::catalog::search(q, 12) {
+            for l in hd_core::catalog::search(q, 12) {
                 v.push(ticker_item(&l.key()));
             }
             // Whatever the command line would do with the query, offered as-is.
@@ -299,8 +299,8 @@ impl TerminalApp {
                 }
                 Some(command::Command::Symbol(key)) => {
                     v.push(ticker_item(&key));
-                    let sec = tr_data::security(&key);
-                    if matches!(sec.class, tr_core::AssetClass::Equity | tr_core::AssetClass::Etf) {
+                    let sec = hd_data::security(&key);
+                    if matches!(sec.class, hd_core::AssetClass::Equity | hd_core::AssetClass::Etf) {
                         let t = &sec.ticker;
                         let mode = if self.demo_mode() { "demo" } else { "LIVE" };
                         v.push(

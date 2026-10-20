@@ -4,8 +4,8 @@
 use std::path::Path;
 
 use anyhow::Result;
+use hd_core::{Bar, Timeframe};
 use rusqlite::{Connection, params};
-use tr_core::{Bar, Timeframe};
 
 pub struct BarCache {
     conn: Connection,

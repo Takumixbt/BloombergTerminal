@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use tr_core::Bar;
+use hd_core::Bar;
 
 use crate::gpu::{DrawCmd, LineKind, LineRef, PaneTransform, SeriesRef, Style, Uniforms};
 use crate::lod::{BarPyramid, LinePyramid, level_for};
@@ -306,7 +306,7 @@ pub fn sub_pane(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tr_core::{Timeframe, sample};
+    use hd_core::{Timeframe, sample};
 
     #[test]
     fn price_pane_bounds_instances_for_huge_series() {

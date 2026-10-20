@@ -1,7 +1,7 @@
 //! Native keyboard-shortcut table (click a binding to record a new one) and the Help pane.
 
 use egui::{Align2, Color32, Id, Rect, RichText, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
-use tr_core::indicators::registry::{self, Category};
+use hd_core::indicators::registry::{self, Category};
 
 use super::TerminalApp;
 use crate::command::IndicatorSpec;
@@ -426,7 +426,7 @@ impl TerminalApp {
                 ui,
                 "Crypto: Binance (Coinbase fallback) · Treasuries: Treasury.gov (FRED) · FX, indices, futures, \
                  ETFs and stocks: Yahoo, or Alpaca with APCA_API_KEY_ID/APCA_API_SECRET_KEY · News: Yahoo and \
-                 CoinDesk · Congress: Senate eFD and House Clerk. TR_PROVIDER=sample runs offline.",
+                 CoinDesk · Congress: Senate eFD and House Clerk. HD_PROVIDER=sample runs offline.",
             );
             ui.add_space(dp(12.0));
         });

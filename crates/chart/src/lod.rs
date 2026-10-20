@@ -3,7 +3,7 @@
 //! zoomed out we render ~800 merged candles, not a million.
 
 use bytemuck::{Pod, Zeroable};
-use tr_core::Bar;
+use hd_core::Bar;
 
 /// One instance as uploaded to the GPU storage buffer (std430: 8 x f32).
 #[repr(C)]

@@ -7,16 +7,16 @@ use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
+use hd_chart::gpu::{LineKind, LineRef};
+use hd_chart::scene::{Overlay, SeriesGpu, line_ref, marker_ref};
+use hd_congress::db::{Alert, PoliticianSummary};
+use hd_congress::performance::{self, Performance, TradeReturn};
+use hd_congress::refresh::{self, HttpSource, NewTradeAlert, RefreshConfig};
+use hd_congress::{Db, Politician, Trade};
+use hd_core::indicators::registry::{Input, Plot, Tone};
+use hd_core::{Bar, Security, Series, Timeframe};
+use hd_data::{BarCache, Provider, Quote, SearchHit, YieldCurves};
 use tokio::sync::Mutex;
-use tr_chart::gpu::{LineKind, LineRef};
-use tr_chart::scene::{Overlay, SeriesGpu, line_ref, marker_ref};
-use tr_congress::db::{Alert, PoliticianSummary};
-use tr_congress::performance::{self, Performance, TradeReturn};
-use tr_congress::refresh::{self, HttpSource, NewTradeAlert, RefreshConfig};
-use tr_congress::{Db, Politician, Trade};
-use tr_core::indicators::registry::{Input, Plot, Tone};
-use tr_core::{Bar, Security, Series, Timeframe};
-use tr_data::{BarCache, Provider, Quote, SearchHit, YieldCurves};
 
 use crate::command::IndicatorSpec;
 use crate::theme;
@@ -26,26 +26,26 @@ pub use flow::{FlowRequest, FlowResponse};
 
 pub type PaneId = u64;
 
-/// Minutes between Congress disclosure checks (`TR_CONGRESS_REFRESH_MIN`; 0 disables).
+/// Minutes between Congress disclosure checks (`HD_CONGRESS_REFRESH_MIN`; 0 disables).
 pub const CONGRESS_REFRESH_MIN: u64 = 30;
 
 pub enum Request {
     /// Load the brokerage portfolio through SnapTrade (`None` = the simulated sample).
-    Portfolio(Option<tr_broker::Credentials>),
+    Portfolio(Option<hd_broker::Credentials>),
     /// Register a SnapTrade user under the partner keys.
     BrokerRegister {
-        creds: tr_broker::Credentials,
+        creds: hd_broker::Credentials,
         user_id: String,
     },
     /// Generate a read-only Connection Portal link (optionally to reconnect a connection).
     BrokerPortal {
-        creds: tr_broker::Credentials,
+        creds: hd_broker::Credentials,
         dark: bool,
         reconnect: Option<String>,
     },
     /// Remove a brokerage connection at the user's explicit request.
     BrokerDisconnect {
-        creds: tr_broker::Credentials,
+        creds: hd_broker::Credentials,
         id: String,
     },
     /// Option chain for one expiration (`None` = nearest).
@@ -126,7 +126,7 @@ pub enum Request {
     Search(String),
     /// Order entry (see `app::trading`); only sent once trading is enabled.
     Trade(TradeRequest),
-    /// Crypto derivatives, order flow and prediction markets (`tr-flow`).
+    /// Crypto derivatives, order flow and prediction markets (`hd-flow`).
     Flow(FlowRequest),
 }
 
@@ -134,41 +134,41 @@ pub enum Request {
 /// the user confirmed.
 pub enum TradeRequest {
     Preview {
-        creds: tr_broker::Credentials,
-        req: tr_broker::trading::OrderRequest,
+        creds: hd_broker::Credentials,
+        req: hd_broker::trading::OrderRequest,
         ticket: u64,
     },
     Place {
-        creds: tr_broker::Credentials,
-        preview: Box<tr_broker::trading::OrderPreview>,
+        creds: hd_broker::Credentials,
+        preview: Box<hd_broker::trading::OrderPreview>,
         ticket: u64,
     },
     Cancel {
-        creds: tr_broker::Credentials,
+        creds: hd_broker::Credentials,
         account: String,
         order: String,
     },
     /// Connection Portal link requesting trading access.
     Portal {
-        creds: tr_broker::Credentials,
+        creds: hd_broker::Credentials,
         dark: bool,
     },
     /// Which brokerage connections can trade (brokerage support and connection access): one
     /// `/authorizations` request, however many accounts there are.
     Capabilities {
-        creds: tr_broker::Credentials,
+        creds: hd_broker::Credentials,
     },
 }
 
 pub enum TradeResponse {
     Preview {
         ticket: u64,
-        result: Result<Box<tr_broker::trading::OrderPreview>, String>,
+        result: Result<Box<hd_broker::trading::OrderPreview>, String>,
     },
     Placed {
         ticket: u64,
-        preview: Box<tr_broker::trading::OrderPreview>,
-        result: Result<Option<Box<tr_broker::Order>>, tr_broker::trading::PlaceError>,
+        preview: Box<hd_broker::trading::OrderPreview>,
+        result: Result<Option<Box<hd_broker::Order>>, hd_broker::trading::PlaceError>,
     },
     Cancelled {
         account: String,
@@ -177,7 +177,7 @@ pub enum TradeResponse {
     },
     Portal(Result<String, String>),
     /// Capabilities by connection (SnapTrade authorization) id.
-    Capabilities(Result<std::collections::HashMap<String, tr_broker::trading::Capability>, CapsError>),
+    Capabilities(Result<std::collections::HashMap<String, hd_broker::trading::Capability>, CapsError>),
 }
 
 /// Why trading access could not be read. A rate limit is reported apart from real errors so
@@ -203,7 +203,7 @@ pub struct Profile {
 }
 
 pub enum Response {
-    Portfolio(Result<Box<tr_broker::Portfolio>, String>),
+    Portfolio(Result<Box<hd_broker::Portfolio>, String>),
     /// `(userId, userSecret)` for a newly registered SnapTrade user.
     BrokerRegistered(Result<(String, String), String>),
     BrokerPortal(Result<String, String>),
@@ -212,17 +212,17 @@ pub enum Response {
     Options {
         pane: PaneId,
         symbol: String,
-        chain: Result<Box<tr_data::OptionChain>, String>,
+        chain: Result<Box<hd_data::OptionChain>, String>,
     },
     News {
         pane: PaneId,
         symbol: Option<String>,
-        items: Result<Vec<tr_data::NewsItem>, String>,
+        items: Result<Vec<hd_data::NewsItem>, String>,
     },
     OrderBook {
         pane: PaneId,
         symbol: String,
-        book: Result<tr_data::OrderBook, String>,
+        book: Result<hd_data::OrderBook, String>,
     },
     History {
         pane: PaneId,
@@ -314,23 +314,23 @@ impl Shared {
 }
 
 pub fn data_dir() -> PathBuf {
-    if let Some(d) = std::env::var_os("TR_DATA_DIR") {
+    if let Some(d) = std::env::var_os("HD_DATA_DIR") {
         return PathBuf::from(d);
     }
-    // Roaming app data on Windows (`%APPDATA%\terminal-rs`), like other desktop apps.
+    // Roaming app data on Windows (`%APPDATA%\Hyperdesk`), like other desktop apps.
     if cfg!(windows)
         && let Some(appdata) = std::env::var_os("APPDATA")
     {
-        return PathBuf::from(appdata).join("terminal-rs");
+        return PathBuf::from(appdata).join("Hyperdesk");
     }
     let home = crate::platform::home_dir().unwrap_or_else(|| PathBuf::from("."));
     if cfg!(target_os = "macos") {
-        home.join("Library/Application Support/terminal-rs")
+        home.join("Library/Application Support/Hyperdesk")
     } else {
         std::env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join(".local/share"))
-            .join("terminal-rs")
+            .join("hyperdesk")
     }
 }
 
@@ -373,7 +373,7 @@ impl Worker {
         // Scheduled congressional disclosure refresh.
         let s = shared.clone();
         rt.spawn(async move {
-            let minutes: u64 = std::env::var("TR_CONGRESS_REFRESH_MIN")
+            let minutes: u64 = std::env::var("HD_CONGRESS_REFRESH_MIN")
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(CONGRESS_REFRESH_MIN);
@@ -488,9 +488,9 @@ fn default_limit(tf: Timeframe) -> usize {
     }
 }
 
-/// Bars requested on first load; `TR_HISTORY_LIMIT` overrides (e.g. 1000000 with sample data).
+/// Bars requested on first load; `HD_HISTORY_LIMIT` overrides (e.g. 1000000 with sample data).
 pub fn initial_limit(tf: Timeframe) -> usize {
-    std::env::var("TR_HISTORY_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or_else(|| default_limit(tf))
+    std::env::var("HD_HISTORY_LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or_else(|| default_limit(tf))
 }
 
 async fn handle(s: &Arc<Shared>, req: Request) {
@@ -601,7 +601,7 @@ async fn handle(s: &Arc<Shared>, req: Request) {
             }
         }
         Request::Markers { pane, symbol } => {
-            let sec = tr_data::security(&symbol);
+            let sec = hd_data::security(&symbol);
             let trades = if sec.has_congress_trades() {
                 s.db.lock().await.trades_for_ticker(&sec.ticker, 2_000).unwrap_or_default()
             } else {
@@ -663,8 +663,8 @@ async fn handle(s: &Arc<Shared>, req: Request) {
         },
         Request::Portfolio(creds) => {
             let result = match creds {
-                None => Ok(tr_broker::sample::portfolio()),
-                Some(c) => match tr_broker::SnapTrade::new(c) {
+                None => Ok(hd_broker::sample::portfolio()),
+                Some(c) => match hd_broker::SnapTrade::new(c) {
                     Ok(client) => client.portfolio().await,
                     Err(e) => Err(e),
                 },
@@ -672,21 +672,21 @@ async fn handle(s: &Arc<Shared>, req: Request) {
             s.send(Response::Portfolio(result.map(Box::new).map_err(|e| format!("{e:#}"))));
         }
         Request::BrokerRegister { creds, user_id } => {
-            let result = match tr_broker::SnapTrade::new(creds) {
+            let result = match hd_broker::SnapTrade::new(creds) {
                 Ok(client) => client.register_user(&user_id).await,
                 Err(e) => Err(e),
             };
             s.send(Response::BrokerRegistered(result.map_err(|e| format!("{e:#}"))));
         }
         Request::BrokerPortal { creds, dark, reconnect } => {
-            let result = match tr_broker::SnapTrade::new(creds) {
+            let result = match hd_broker::SnapTrade::new(creds) {
                 Ok(client) => client.connection_portal_url(dark, reconnect.as_deref()).await,
                 Err(e) => Err(e),
             };
             s.send(Response::BrokerPortal(result.map_err(|e| format!("{e:#}"))));
         }
         Request::BrokerDisconnect { creds, id } => {
-            let result = match tr_broker::SnapTrade::new(creds) {
+            let result = match hd_broker::SnapTrade::new(creds) {
                 Ok(client) => client.delete_connection(&id).await,
                 Err(e) => Err(e),
             };
@@ -715,7 +715,7 @@ async fn handle(s: &Arc<Shared>, req: Request) {
 
 async fn trade(t: TradeRequest) -> TradeResponse {
     let err = |e: anyhow::Error| format!("{e:#}");
-    let client = |creds| tr_broker::SnapTrade::new(creds).map_err(err);
+    let client = |creds| hd_broker::SnapTrade::new(creds).map_err(err);
     match t {
         TradeRequest::Preview { creds, req, ticket } => {
             let result = match client(creds) {
@@ -727,7 +727,7 @@ async fn trade(t: TradeRequest) -> TradeResponse {
         TradeRequest::Place { creds, preview, ticket } => {
             let result = match client(creds) {
                 Ok(c) => c.place_previewed(&preview).await.map(|o| o.map(Box::new)),
-                Err(e) => Err(tr_broker::trading::PlaceError::NotSent(e)),
+                Err(e) => Err(hd_broker::trading::PlaceError::NotSent(e)),
             };
             TradeResponse::Placed { ticket, preview, result }
         }
@@ -744,7 +744,7 @@ async fn trade(t: TradeRequest) -> TradeResponse {
         }),
         TradeRequest::Capabilities { creds } => TradeResponse::Capabilities(match client(creds) {
             Ok(c) => c.connection_capabilities().await.map_err(|e| {
-                let throttle = tr_broker::snaptrade::throttle(&e);
+                let throttle = hd_broker::snaptrade::throttle(&e);
                 CapsError { message: err(e), throttled: throttle.is_some(), retry_after: throttle.flatten() }
             }),
             Err(message) => Err(CapsError { message, throttled: false, retry_after: None }),
@@ -911,7 +911,7 @@ mod tests {
 
     #[test]
     fn indicators_build_expected_overlays() {
-        let bars = tr_core::sample::generate("X", Timeframe::D1, 300, 1_790_000_000);
+        let bars = hd_core::sample::generate("X", Timeframe::D1, 300, 1_790_000_000);
         let palette = crate::themes::terminal_light().palette(theme::DEFAULT_ACCENT);
         let specs: Vec<IndicatorSpec> =
             ["BB", "MACD", "VWAP", "PSAR", "PIVOT"].iter().map(|c| IndicatorSpec::new(c, &[]).unwrap()).collect();
@@ -934,7 +934,7 @@ mod tests {
     fn series_generations_only_move_forward() {
         let (out, _rx) = mpsc::channel();
         let s = Shared {
-            provider: std::sync::Arc::new(tr_data::sample::SampleProvider::at(0, 10)),
+            provider: std::sync::Arc::new(hd_data::sample::SampleProvider::at(0, 10)),
             series: Default::default(),
             cache: std::sync::Mutex::new(None),
             db: Mutex::new(Db::open_in_memory().unwrap()),
@@ -965,7 +965,7 @@ mod tests {
     fn flow_requests_answer_offline() {
         let (out, rx) = mpsc::channel();
         let s = Shared {
-            provider: std::sync::Arc::new(tr_data::sample::SampleProvider::at(0, 10)),
+            provider: std::sync::Arc::new(hd_data::sample::SampleProvider::at(0, 10)),
             series: Default::default(),
             cache: std::sync::Mutex::new(None),
             db: Mutex::new(Db::open_in_memory().unwrap()),
@@ -974,13 +974,13 @@ mod tests {
             flow: Default::default(),
         };
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        let market = Box::new(tr_flow::sample::markets().remove(0));
+        let market = Box::new(hd_flow::sample::markets().remove(0));
         rt.block_on(async {
             for r in [
                 FlowRequest::Board,
                 FlowRequest::Coin { pane: 1, coin: "BTC".into() },
                 FlowRequest::Liquidations,
-                FlowRequest::Stream { pane: 2, venue: tr_flow::Exchange::Hyperliquid, coin: "ETH".into(), tf_secs: 60 },
+                FlowRequest::Stream { pane: 2, venue: hd_flow::Exchange::Hyperliquid, coin: "ETH".into(), tf_secs: 60 },
                 FlowRequest::Markets,
                 FlowRequest::MarketDetail { pane: 3, market },
             ] {
@@ -1014,7 +1014,7 @@ mod tests {
     fn hyperliquid_and_options_requests_answer_offline() {
         let (out, rx) = mpsc::channel();
         let s = Shared {
-            provider: std::sync::Arc::new(tr_data::sample::SampleProvider::at(0, 10)),
+            provider: std::sync::Arc::new(hd_data::sample::SampleProvider::at(0, 10)),
             series: Default::default(),
             cache: std::sync::Mutex::new(None),
             db: Mutex::new(Db::open_in_memory().unwrap()),
@@ -1023,7 +1023,7 @@ mod tests {
             flow: Default::default(),
         };
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        let addr = tr_flow::sample::leaderboard()[0].address.clone();
+        let addr = hd_flow::sample::leaderboard()[0].address.clone();
         rt.block_on(async {
             for r in [
                 FlowRequest::Leaders,

@@ -1,11 +1,11 @@
 [package]
-name = "tr-chart"
+name = "hd-chart"
 description = "GPU chart rendering (wgpu) with LOD pyramids, viewport math and egui integration"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-tr-core.workspace = true
+hd-core.workspace = true
 egui = "0.36"
 egui-wgpu = "0.36"
 bytemuck = { version = "1", features = ["derive"] }

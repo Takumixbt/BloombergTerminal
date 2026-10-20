@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use tr_broker::{Credentials, Portfolio, Position, SecretStore};
+use hd_broker::{Credentials, Portfolio, Position, SecretStore};
 
 use super::{PaneKind, TerminalApp};
 use crate::command::PortView;
@@ -48,7 +48,7 @@ impl PortfolioPane {
 
     pub fn title(&self) -> String {
         match &self.symbol {
-            Some(s) => format!("{} {}", tr_data::security(s).ticker, self.view.label()),
+            Some(s) => format!("{} {}", hd_data::security(s).ticker, self.view.label()),
             None if self.view == PortView::Summary => "Portfolio".into(),
             None => self.view.label().into(),
         }
@@ -58,7 +58,7 @@ impl PortfolioPane {
 /// Where the integration stands, for the setup screen and status line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BrokerMode {
-    /// Offline sample data (`TR_PROVIDER=sample` or `TR_BROKER=sample`) without credentials.
+    /// Offline sample data (`HD_PROVIDER=sample` or `HD_BROKER=sample`) without credentials.
     Simulated,
     /// Keys missing or incomplete: show the setup screen.
     Setup,
@@ -88,7 +88,7 @@ pub struct BrokerState {
     /// Last Connection Portal link, so it can be copied if no browser opened.
     pub portal_url: Option<String>,
     pub connecting_since: Option<Instant>,
-    /// Sample portfolio requested (offline provider or `TR_BROKER=sample`).
+    /// Sample portfolio requested (offline provider or `HD_BROKER=sample`).
     pub simulate: bool,
     pub last_quotes: Option<Instant>,
     /// "Test Connection" is waiting for a portfolio load.
@@ -112,7 +112,7 @@ impl BrokerState {
         };
         let mut creds = stored.clone();
         let from_env = creds.apply_env(|k| std::env::var(k).ok());
-        let simulate = offline || std::env::var("TR_BROKER").is_ok_and(|v| v.eq_ignore_ascii_case("sample"));
+        let simulate = offline || std::env::var("HD_BROKER").is_ok_and(|v| v.eq_ignore_ascii_case("sample"));
         Self {
             store,
             saved: stored,
@@ -148,8 +148,8 @@ impl BrokerState {
 
     /// The terminal's own quote for a position, when it maps onto a market key (options are
     /// never repriced from their underlying).
-    pub fn live_price(&self, quotes: &std::collections::HashMap<String, tr_data::Quote>, p: &Position) -> Option<f64> {
-        if p.kind == tr_broker::InstrumentKind::Option {
+    pub fn live_price(&self, quotes: &std::collections::HashMap<String, hd_data::Quote>, p: &Position) -> Option<f64> {
+        if p.kind == hd_broker::InstrumentKind::Option {
             return None;
         }
         quotes.get(&p.market_key()?).map(|q| q.last).filter(|x| x.is_finite() && *x > 0.0)
@@ -165,7 +165,7 @@ pub fn open_external(target: &str) -> std::io::Result<()> {
 pub fn new_user_id() -> String {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
     let mix = nanos ^ (u128::from(std::process::id()) << 64);
-    format!("terminal-rs-{:016x}", (mix as u64) ^ ((mix >> 64) as u64))
+    format!("hyperdesk-{:016x}", (mix as u64) ^ ((mix >> 64) as u64))
 }
 
 impl TerminalApp {
@@ -203,7 +203,7 @@ impl TerminalApp {
             let mut keys: Vec<String> = pf
                 .positions
                 .iter()
-                .filter(|p| p.kind != tr_broker::InstrumentKind::Option)
+                .filter(|p| p.kind != hd_broker::InstrumentKind::Option)
                 .filter_map(Position::market_key)
                 .collect();
             keys.sort();
@@ -585,7 +585,7 @@ impl TerminalApp {
             ui.add_space(134.0);
             ui.checkbox(&mut self.broker.reveal, "Show secrets");
             if ui.link("Open the SnapTrade dashboard").clicked()
-                && let Err(e) = open_external(tr_broker::snaptrade::DASHBOARD_URL)
+                && let Err(e) = open_external(hd_broker::snaptrade::DASHBOARD_URL)
             {
                 self.status = format!("Could not open the browser: {e}");
             }
@@ -646,7 +646,7 @@ impl TerminalApp {
         // ---- connected brokerages ----
         section(ui, "Connected brokerages");
         let ready = self.broker.creds.is_ready();
-        let connections: Vec<tr_broker::Connection> = live_pf.map(|p| p.connections.clone()).unwrap_or_default();
+        let connections: Vec<hd_broker::Connection> = live_pf.map(|p| p.connections.clone()).unwrap_or_default();
         if !ready {
             note(ui, "Save your keys and register a user to connect a brokerage.");
         } else if live_pf.is_none() {
@@ -755,7 +755,7 @@ impl TerminalApp {
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(
-                    !busy && (self.broker.saved != tr_broker::Credentials::default()),
+                    !busy && (self.broker.saved != hd_broker::Credentials::default()),
                     egui::Button::new("Forget Credentials"),
                 )
                 .on_hover_text("Delete the saved keys and user secret (your brokerage connections stay at SnapTrade)")
@@ -777,7 +777,7 @@ mod tests {
         let a = new_user_id();
         std::thread::sleep(Duration::from_millis(1));
         let b = new_user_id();
-        assert!(a.starts_with("terminal-rs-") && a.len() == "terminal-rs-".len() + 16);
+        assert!(a.starts_with("hyperdesk-") && a.len() == "hyperdesk-".len() + 16);
         assert_ne!(a, b);
     }
 

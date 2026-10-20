@@ -5,9 +5,9 @@
 //! `None` rather than failing the whole account.
 
 use chrono::{DateTime, NaiveDate, Utc};
+use hd_core::{AssetClass, Security};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tr_core::{AssetClass, Security};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Account {
@@ -46,7 +46,7 @@ pub struct Connection {
     pub disabled: bool,
     pub created: Option<DateTime<Utc>>,
     pub updated: Option<DateTime<Utc>>,
-    /// Whether the connection allows trading (terminal-rs only trades when the user enables it).
+    /// Whether the connection allows trading (Hyperdesk only trades when the user enables it).
     pub trading: bool,
 }
 
@@ -221,7 +221,7 @@ pub fn market_key(kind: InstrumentKind, symbol: &str, currency: &str) -> Option<
         InstrumentKind::Stock | InstrumentKind::Etf | InstrumentKind::Fund | InstrumentKind::Option => {
             match s.split_once('.') {
                 Some((_, suffix)) if suffix.len() > 1 => None,
-                _ if !tr_core::security::looks_like_ticker(&s) => None,
+                _ if !hd_core::security::looks_like_ticker(&s) => None,
                 _ => Some(
                     Security::parse(&s).filter(|sec| matches!(sec.class, AssetClass::Equity | AssetClass::Etf))?.key(),
                 ),

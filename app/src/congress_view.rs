@@ -3,8 +3,8 @@
 //! Bloomberg list function.
 
 use egui::{Color32, RichText, ScrollArea, Sense, Ui};
-use tr_congress::db::{Alert, PoliticianSummary};
-use tr_congress::{Chamber, Party, Trade, TxType};
+use hd_congress::db::{Alert, PoliticianSummary};
+use hd_congress::{Chamber, Party, Trade, TxType};
 
 use crate::theme::{self, amber, mono, muted, text, ui_font};
 use crate::worker::Profile;
@@ -405,7 +405,7 @@ pub fn alerts(ui: &mut Ui, alerts: &[Alert]) -> (Vec<Action>, bool) {
 mod tests {
     use super::*;
     use chrono::NaiveDate;
-    use tr_congress::AmountRange;
+    use hd_congress::AmountRange;
 
     fn trade(party: Party, chamber: Chamber, tx: TxType, ticker: Option<&str>) -> Trade {
         Trade {
