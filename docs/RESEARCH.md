@@ -1,10 +1,9 @@
-# Velo, OpenMarket, Hyperdash and Gambit: feature study and what this fork implements
+# Feature study: Velo, OpenMarket, Hyperdash, hl.eco and Gambit
 
-Upstream built its chart UX from REA ("Reverse Engineer Anything") captures of
-tradingview.com. For Velo and OpenMarket this fork worked from their **public descriptions**
-(product pages, user guides, release notes and third-party reviews, October 2026), because
-neither site was reachable from the build environment. No captures were made and nothing of
-theirs is copied; to deepen this study with REA's website mode, see "Next steps" below.
+Hyperdesk's crypto features were planned from the **public descriptions** of these products
+(product pages, documentation, release notes and third-party reviews, October 2026); none of
+their sites were reachable from the build environment, no captures were made, and nothing of
+theirs is copied. To deepen the study, see "Next steps" below.
 
 ## Velo (velo.xyz)
 
@@ -22,8 +21,11 @@ A crypto derivatives data and charting platform ("institutional-grade" market st
 | Order book heatmaps | `HEAT` | Done |
 | Coverage: Binance, Bybit, OKX, Deribit, Hyperliquid, CME | All but CME | CME has no free real-time API |
 | Years of 1-minute history, charting any metric | 7–30 days (Binance history endpoints) | Not done: needs a local recorder |
-| ETF flows, news | News from upstream (`CN`) | ETF flows not done |
-| Alerts | Upstream has Congress alerts only | Not done for derivatives |
+| News feed | `WIRE`: multi-source wire with coin and story tags | Done |
+| Market dashboard | `MKT`: returns 1h–30d, CVD in dollars, OI, funding, returns heatmap, breadth | Done |
+| Seasonality by hour and session | `SEASON` | Done |
+| Price / OI / volume / liquidation alerts | `CALRT` (price, change, funding, OI change, liquidation size) | Done (no volume rule yet) |
+| ETF flows | — | Not done (no free source) |
 
 ## OpenMarket (openmarket.xyz, formerly Kiyotaka)
 
@@ -38,8 +40,8 @@ A social, professional charting platform across crypto, equities and prediction 
 | TP/SL heatmap | — | Not done |
 | Suites (bundles of up to 8 indicators, e.g. "Ultimate CVD", "Aggregated Derivatives") | Saved layouts; the built-in **Crypto Desk** layout | Partial |
 | Prediction markets (Polymarket events, candles, depth) | `PRED`: markets, outcome history, book | Done |
-| Equities | Upstream (Yahoo/Alpaca) | Done upstream |
-| Scripting (kScript / "wrun") and AI-assisted indicator building | Upstream has 151 built-in indicators | Not done |
+| Equities | Charts and quotes (Yahoo/Alpaca) | Done |
+| Scripting (kScript / "wrun") and AI-assisted indicator building | The original has 151 built-in indicators | Not done |
 | Social sharing of charts | Layout import/export (JSON) | Partial |
 
 ## Hyperdash (hyperdash.com)
@@ -58,6 +60,19 @@ cohorts, leaderboards, vaults, copy trading and TWAP orders.
 | Whale positions | `HLPOS` largest positions; `PRINTS` large trades with wallets | Done |
 | Copy trading, TWAP execution | — | Not done: needs order signing (below) |
 
+## hl.eco
+
+The Hyperliquid ecosystem site: 50+ dashboards, an ecosystem directory, a HyperEVM/HyperCore
+explorer and a financials (revenue) dashboard.
+
+| hl.eco feature (public description) | Here | Status |
+|---|---|---|
+| Ecosystem metrics dashboards | `HLECO`: perp OI/volume, HYPE, HLP, spot market caps | Done |
+| HIP-3 builder markets | `HLECO` HIP-3 table (DEX, markets, OI, volume) | Done |
+| Financials / revenue | `HLECO` daily fees and revenue (DefiLlama) | Done |
+| Explorer, .hl names | `HLW` for HyperCore accounts | Partial (no HyperEVM transactions or .hl names) |
+| Project directory | — | Not done (no public API found) |
+
 ## Gambit Terminal (terminal.gambit.zone)
 
 Public description: a crypto and equities terminal with live charts, news, options flow,
@@ -66,7 +81,8 @@ design and layout as proprietary, so only that one-line feature list was used.
 
 | Gambit feature | Here | Status |
 |---|---|---|
-| Live charts, news, equities and crypto | Upstream hyperdesk | Done upstream |
+| Live charts, equities and crypto | Charts, `WEI`, `OMON` | Done |
+| News | `WIRE` news wire; `CALLS` KOL calls from X | Done (X needs your token or RSS bridges) |
 | Options flow | `OFLOW`: Deribit BTC/ETH trades, blocks, premiums, put/call | Done for crypto; no free US equity flow source |
 | On-chain data | Hyperliquid wallets, positioning and prints | Done (Hyperliquid) |
 | Non-custodial Hyperliquid order ticket | — | Not done (below) |
@@ -74,7 +90,7 @@ design and layout as proprietary, so only that one-line feature list was used.
 ### A safe path to Hyperliquid order entry
 
 Orders on Hyperliquid are signed (EIP-712 over a msgpack hash of the action) by the account
-or by an **API ("agent") wallet** the account approves. The safe design, mirroring upstream's
+or by an **API ("agent") wallet** the account approves. The safe design, mirroring the existing
 SnapTrade trading flow:
 
 1. The user creates an agent wallet in the Hyperliquid app (it can trade but not withdraw)
@@ -96,10 +112,9 @@ orders, and the build environment could not reach Hyperliquid to test it.
    (the chart already supports oscillator panes; feed them from `hd-flow`).
 3. **Spot vs perp CVD** (OpenMarket's "is it spot- or perp-led" view): add Binance and
    Coinbase spot trade streams next to the perp stream.
-4. **Hyperliquid HIP-3** markets (`perpDexs`, `metaAndAssetCtxs` with `dex`), and Hyperliquid
-   liquidation levels from public positions.
+4. **Hyperliquid HIP-3 in charts and heatmaps** (they are listed in `HLECO` today), and
+   liquidation levels over every wallet rather than the top 200.
 5. **Options**: Deribit chain, IV surface, skew and term structure for BTC/ETH.
-6. **Alerts** on funding, OI change and large liquidations, reusing upstream's toast/alert UI.
-7. **REA study**: with REA installed (`npx rea-agents setup`), run its website mode on the
-   logged-out pages of velo.xyz and openmarket.xyz (as upstream did for TradingView) and add
-   evidence-backed notes here before building the next feature. Study behaviour only.
+6. **Behavioural study**: with a tool like REA (`npx rea-agents setup`), run its website mode on
+   the public, logged-out pages of these products and add evidence-backed notes here before
+   building the next feature. Study behaviour only; never copy code, assets or design.

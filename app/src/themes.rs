@@ -330,9 +330,9 @@ pub fn terminal_light() -> Theme {
 }
 
 /// Classic terminal: amber monospace on black, compact.
-fn bloomberg() -> Theme {
+fn amber_terminal() -> Theme {
     Theme {
-        name: "Bloomberg".into(),
+        name: "Amber Terminal".into(),
         dark: true,
         colors: ThemeColors {
             background: Hex::rgb(0, 0, 0),
@@ -575,7 +575,7 @@ pub fn builtins() -> Vec<Theme> {
         hyperdesk(),
         terminal_dark(),
         terminal_light(),
-        bloomberg(),
+        amber_terminal(),
         high_contrast(),
         solarized_dark(),
         solarized_light(),

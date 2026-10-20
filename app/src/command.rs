@@ -297,6 +297,20 @@ pub enum Function {
     Prints(Option<String>),
     /// Deribit options flow (`OFLOW`, `OFLOW ETH`).
     OptionFlow(Option<String>),
+    /// The news wire, optionally for one coin.
+    Wire(Option<String>),
+    /// KOL calls from X.
+    Kol,
+    /// Hyperliquid ecosystem overview.
+    Eco,
+    /// Market dashboard (`MKT`, `MKT HEAT` for the returns heatmap).
+    Market {
+        heatmap: bool,
+    },
+    /// Seasonality for a coin.
+    Season(Option<String>),
+    /// Crypto alerts, optionally adding a rule (`CALRT BTC > 70k`).
+    CryptoAlerts(String),
 }
 
 /// `[COIN] [VENUE]` in either order (`ETH`, `HL`, `SOL BIN`).
@@ -423,6 +437,16 @@ fn parse_function(head: &str, rest: &[&str]) -> Option<Function> {
             Function::HlPositioning(rest.first().map(|c| hd_flow::venue::coin_of_key(c)))
         }
         "PRINTS" | "WHALEPRINTS" | "BLOCKS" => Function::Prints(rest.first().map(|c| hd_flow::venue::coin_of_key(c))),
+        "WIRE" | "CNEWS" | "CRYPTONEWS" | "HEADLINES" => {
+            Function::Wire(rest.first().map(|c| hd_flow::venue::coin_of_key(c)))
+        }
+        "CALLS" | "KOL" | "KOLS" => Function::Kol,
+        "HLECO" | "ECO" | "ECOSYSTEM" | "HIP3" => Function::Eco,
+        "MKT" | "MARKET" | "RETURNS" | "MOVERS" => Function::Market {
+            heatmap: words().first().is_some_and(|w| matches!(w.as_str(), "HEAT" | "HEATMAP" | "MAP")),
+        },
+        "SEASON" | "SEASONALITY" | "SEAS" => Function::Season(rest.first().map(|c| hd_flow::venue::coin_of_key(c))),
+        "CALRT" | "XALRT" | "CALERT" => Function::CryptoAlerts(joined()),
         "OFLOW" | "OPTFLOW" | "OPTIONSFLOW" => {
             Function::OptionFlow(rest.first().map(|c| hd_flow::venue::coin_of_key(c)))
         }
@@ -439,16 +463,25 @@ fn parse_function(head: &str, rest: &[&str]) -> Option<Function> {
     })
 }
 
+/// Commands that take free text (names, searches, rules), never a security.
+const FREE_TEXT: [&str; 17] = [
+    "LAYOUT", "GRID", "LP", "TITLE", "RENAME", "SECF", "SEARCH", "FIND", "POL", "PROFILE", "TRACK", "UNTRACK", "PRED",
+    "PREDICT", "POLY", "CALRT", "HLW",
+];
+
 /// Parse one command line. Returns `None` for empty or unrecognised input.
 pub fn parse(input: &str) -> Option<Command> {
     let tokens: Vec<&str> = input.split_whitespace().filter(|t| !t.eq_ignore_ascii_case("<GO>")).collect();
     let (&head, rest) = tokens.split_first()?;
-    // `<TICKER> <YELLOW KEY>` is always a security, even if the ticker spells a function.
-    let keyed = match rest {
-        [k, ..] if YellowKey::parse(k).is_some() => true,
-        [us, k, ..] if us.eq_ignore_ascii_case("US") && YellowKey::parse(k).is_some() => true,
-        _ => false,
-    };
+    // `<TICKER> <YELLOW KEY>` is always a security, even if the ticker spells a function, except
+    // for commands whose arguments are free text (`LAYOUT Crypto Desk`, `TITLE Curncy desk`).
+    let free_text = FREE_TEXT.iter().any(|f| head.eq_ignore_ascii_case(f));
+    let keyed = !free_text
+        && match rest {
+            [k, ..] if YellowKey::parse(k).is_some() => true,
+            [us, k, ..] if us.eq_ignore_ascii_case("US") && YellowKey::parse(k).is_some() => true,
+            _ => false,
+        };
     if !keyed && let Some(f) = parse_function(head, rest) {
         return Some(Command::Function(f));
     }
@@ -573,6 +606,22 @@ fn describe(f: &Function) -> String {
         Function::Prints(None) => "Whale prints: large Hyperliquid trades with wallets".into(),
         Function::Prints(Some(c)) => format!("{c} whale prints on Hyperliquid"),
         Function::OptionFlow(c) => format!("Options flow (Deribit {})", c.as_deref().unwrap_or("BTC + ETH")),
+        Function::Wire(None) => "News wire: crypto and macro headlines, tagged by coin and story".into(),
+        Function::Wire(Some(c)) => format!("News wire for {c}"),
+        Function::Kol => "KOL calls from X: coin, direction, move since the call, scorecard".into(),
+        Function::Eco => "Hyperliquid ecosystem: perps, HIP-3 DEXs, spot, HLP, fees and revenue".into(),
+        Function::Market { heatmap: false } => "Market: returns 1h–30d, CVD, OI and funding per coin".into(),
+        Function::Market { heatmap: true } => "Market returns heatmap".into(),
+        Function::Season(c) => {
+            format!("Seasonality by weekday and hour for {}", c.as_deref().unwrap_or("(focused coin)"))
+        }
+        Function::CryptoAlerts(r) if r.trim().is_empty() => {
+            "Crypto alerts: price, change, funding, OI, liquidations".into()
+        }
+        Function::CryptoAlerts(r) => match hd_flow::alerts::Rule::parse(r) {
+            Some(rule) => format!("Add alert: {}", rule.describe()),
+            None => "Alert rule: BTC > 70k · SOL CHG > 8% · HYPE FUNDING > 0.05% · ETH OI < -5% · LIQ > 1M".into(),
+        },
         Function::Predict(q) if q.is_empty() => "Prediction markets (Polymarket)".into(),
         Function::Predict(q) => format!("Prediction markets matching \"{q}\""),
         Function::Theme(t) => format!("Theme {t}"),
@@ -686,6 +735,10 @@ mod tests {
             Some(Command::Function(Function::WatchAdd(vec!["MSFT".into(), "NVDA".into()])))
         );
         assert_eq!(parse("LAYOUT 4"), Some(Command::Function(Function::Layout("4".into()))));
+        // "Crypto" is also a yellow key; a layout name is free text.
+        assert_eq!(parse("LAYOUT Crypto Desk"), Some(Command::Function(Function::Layout("Crypto Desk".into()))));
+        assert_eq!(parse("TITLE Curncy desk"), Some(Command::Function(Function::Title("Curncy desk".into()))));
+        assert_eq!(parse("BTCUSD CRYPTO"), Some(Command::Symbol("BTCUSD Curncy".into())), "still a security");
         assert_eq!(
             parse("LAYOUT save Morning Desk"),
             Some(Command::Function(Function::Layout("save Morning Desk".into())))

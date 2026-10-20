@@ -21,6 +21,7 @@ use hd_flow::polymarket::{Detail, Market};
 use hd_flow::{Exchange, fmt_usd};
 use serde::{Deserialize, Serialize};
 
+use super::kit::*;
 use super::{PaneKind, TerminalApp};
 use crate::congress_view::Action;
 use crate::theme::{self, amber, dp, mono, muted, text, ui_font};
@@ -302,53 +303,6 @@ impl TerminalApp {
 
 // ---- Shared drawing helpers ----------------------------------------------------------
 
-fn simulated_badge(ui: &mut Ui, what: &str) {
-    ui.label(RichText::new(" SIMULATED ").font(ui_font(10.5)).color(Color32::BLACK).background_color(amber()))
-        .on_hover_text(format!("Offline sample data (HD_PROVIDER=sample); {what} are synthetic."));
-}
-
-fn title(ui: &mut Ui, s: &str) {
-    ui.label(RichText::new(s).font(mono(12.5)).color(amber()));
-}
-
-fn note(ui: &mut Ui, s: impl Into<String>) {
-    ui.label(RichText::new(s.into()).font(ui_font(11.0)).color(muted()));
-}
-
-/// Decimals that keep about five significant digits.
-fn price_dp(p: f64) -> usize {
-    let a = p.abs();
-    if a >= 10_000.0 {
-        1
-    } else if a >= 100.0 {
-        2
-    } else if a >= 1.0 {
-        4
-    } else if a > 0.0 {
-        ((-a.log10()).floor() as usize + 4).min(10)
-    } else {
-        2
-    }
-}
-
-pub fn fmt_price(p: f64) -> String {
-    format!("{:.*}", price_dp(p), p)
-}
-
-fn pct(x: f64, dp: usize) -> String {
-    format!("{:+.*}%", dp, x * 100.0)
-}
-
-fn signed_color(x: f64) -> Color32 {
-    if x > 0.0 {
-        theme::up()
-    } else if x < 0.0 {
-        theme::down()
-    } else {
-        muted()
-    }
-}
-
 fn fmt_funding(f8h: f64, apr: bool) -> String {
     if apr { format!("{:+.1}%", f8h * 3.0 * 365.0 * 100.0) } else { format!("{:+.4}%", f8h * 100.0) }
 }
@@ -361,86 +315,6 @@ fn funding_wash(f8h: f64) -> Color32 {
     c.gamma_multiply(0.05 + 0.3 * t)
 }
 
-fn local_hms(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|d| d.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
-        .unwrap_or_default()
-}
-
-/// A compact line or bar chart of `(unix_secs, value)` with a title, last value and range.
-fn mini_chart(
-    ui: &Ui,
-    rect: Rect,
-    title: &str,
-    pts: &[(i64, f64)],
-    bars: bool,
-    fmt: &dyn Fn(f64) -> String,
-    color: Color32,
-) {
-    let p = ui.painter_at(rect);
-    p.rect_filled(rect, 6.0, theme::header().gamma_multiply(0.6));
-    let head = Rect::from_min_size(rect.min, vec2(rect.width(), dp(18.0)));
-    p.text(pos2(head.left() + 6.0, head.center().y), Align2::LEFT_CENTER, title, ui_font(11.0), muted());
-    let Some(&(_, last)) = pts.last() else {
-        p.text(rect.center(), Align2::CENTER_CENTER, "no data", ui_font(11.0), muted());
-        return;
-    };
-    p.text(pos2(head.right() - 6.0, head.center().y), Align2::RIGHT_CENTER, fmt(last), mono(11.5), text());
-    let plot = Rect::from_min_max(
-        pos2(rect.left() + 6.0, head.bottom() + 2.0),
-        pos2(rect.right() - 6.0, rect.bottom() - 14.0),
-    );
-    if plot.height() < 8.0 {
-        return;
-    }
-    let (t0, t1) = (pts[0].0 as f64, pts[pts.len() - 1].0.max(pts[0].0 + 1) as f64);
-    let mut lo = pts.iter().map(|x| x.1).fold(f64::INFINITY, f64::min);
-    let mut hi = pts.iter().map(|x| x.1).fold(f64::NEG_INFINITY, f64::max);
-    if bars {
-        lo = lo.min(0.0);
-        hi = hi.max(0.0);
-    }
-    if (hi - lo).abs() < 1e-18 {
-        hi += 1e-9_f64.max(hi.abs() * 0.01);
-        lo -= 1e-9_f64.max(lo.abs() * 0.01);
-    }
-    let x = |t: i64| plot.left() + ((t as f64 - t0) / (t1 - t0)) as f32 * plot.width();
-    let y = |v: f64| plot.bottom() - ((v - lo) / (hi - lo)) as f32 * plot.height();
-    if bars {
-        let w = (plot.width() / pts.len() as f32 - 1.0).clamp(1.0, 8.0);
-        let zero = y(0.0);
-        for &(t, v) in pts {
-            let (a, b) = (zero.min(y(v)), zero.max(y(v)));
-            let c = if v >= 0.0 { theme::up() } else { theme::down() };
-            p.rect_filled(
-                Rect::from_min_max(pos2(x(t) - w / 2.0, a), pos2(x(t) + w / 2.0, b.max(a + 1.0))),
-                0.0,
-                c.gamma_multiply(0.85),
-            );
-        }
-        p.hline(plot.x_range(), zero, Stroke::new(1.0, theme::border()));
-    } else {
-        let line: Vec<Pos2> = pts.iter().map(|&(t, v)| pos2(x(t), y(v))).collect();
-        let mut area = line.clone();
-        area.push(pos2(plot.right(), plot.bottom()));
-        area.push(pos2(plot.left(), plot.bottom()));
-        if line.len() > 1 {
-            // A convex fill would be wrong for an arbitrary series; draw thin columns instead.
-            for w in line.windows(2) {
-                p.add(Shape::convex_polygon(
-                    vec![w[0], w[1], pos2(w[1].x, plot.bottom()), pos2(w[0].x, plot.bottom())],
-                    color.gamma_multiply(0.12),
-                    Stroke::NONE,
-                ));
-            }
-            p.add(Shape::line(line, Stroke::new(1.5, color)));
-        }
-    }
-    let foot = rect.bottom() - 7.0;
-    p.text(pos2(plot.left(), foot), Align2::LEFT_CENTER, format!("lo {}", fmt(lo)), ui_font(10.0), muted());
-    p.text(pos2(plot.right(), foot), Align2::RIGHT_CENTER, format!("hi {}", fmt(hi)), ui_font(10.0), muted());
-}
-
 /// One small history chart in a coin's detail view.
 struct Spark {
     title: String,
@@ -448,18 +322,6 @@ struct Spark {
     bars: bool,
     fmt: fn(f64) -> String,
     color: Color32,
-}
-
-/// Lay out `n` chart cells in a grid filling `rect`.
-fn grid(rect: Rect, n: usize, min_w: f32, h: f32) -> Vec<Rect> {
-    let cols = ((rect.width() / min_w).floor() as usize).clamp(1, n.max(1));
-    let w = rect.width() / cols as f32;
-    (0..n)
-        .map(|k| {
-            let (r, c) = (k / cols, k % cols);
-            Rect::from_min_size(pos2(rect.left() + c as f32 * w, rect.top() + r as f32 * h), vec2(w, h)).shrink(3.0)
-        })
-        .collect()
 }
 
 // ---- DERIV board ---------------------------------------------------------------------
@@ -511,7 +373,7 @@ fn board_header(ui: &mut Ui, d: &mut DerivPane, b: &Board) {
             ui.label(RichText::new(format!("{} {}", e.short(), fmt_usd(oi))).font(mono(11.0)).color(muted()));
         }
         if b.simulated {
-            simulated_badge(ui, "funding, open interest and prices");
+            simulated(ui, "funding, open interest and prices");
         }
     });
     ui.horizontal_wrapped(|ui| {
@@ -617,14 +479,9 @@ fn deriv_board(ui: &mut Ui, d: &mut DerivPane, board: Option<&Board>) -> Option<
             cell(0, r.coin.clone(), amber(), None);
             cell(1, fmt_price(r.price), text(), None);
             let ch = r.change_24h.unwrap_or(0.0);
-            cell(2, r.change_24h.map_or("—".into(), |c| pct(c, 2)), signed_color(ch), None);
+            cell(2, r.change_24h.map_or("—".into(), |c| pct(c, 2)), signed(ch), None);
             cell(3, fmt_usd(r.oi_usd), text(), None);
-            cell(
-                4,
-                r.oi_change_24h.map_or("—".into(), |c| pct(c, 1)),
-                signed_color(r.oi_change_24h.unwrap_or(0.0)),
-                None,
-            );
+            cell(4, r.oi_change_24h.map_or("—".into(), |c| pct(c, 1)), signed(r.oi_change_24h.unwrap_or(0.0)), None);
             cell(5, fmt_usd(r.volume_usd), text(), None);
             match r.funding_8h {
                 Some(f) => cell(6, fmt_funding(f, d.apr), text(), Some(funding_wash(f))),
@@ -635,7 +492,7 @@ fn deriv_board(ui: &mut Ui, d: &mut DerivPane, board: Option<&Board>) -> Option<
                     Some(f) => cell(
                         7 + k,
                         fmt_funding(f, d.apr),
-                        signed_color(f - 0.0001).gamma_multiply(0.9),
+                        signed(f - 0.0001).gamma_multiply(0.9),
                         Some(funding_wash(f).gamma_multiply(0.6)),
                     ),
                     None => cell(7 + k, "·".into(), muted(), None),
@@ -645,7 +502,7 @@ fn deriv_board(ui: &mut Ui, d: &mut DerivPane, board: Option<&Board>) -> Option<
             cell(
                 k,
                 r.premium.map_or("—".into(), |x| format!("{:+.3}%", x * 100.0)),
-                signed_color(r.premium.unwrap_or(0.0)),
+                signed(r.premium.unwrap_or(0.0)),
                 None,
             );
             cell(k + 1, r.long_short.map_or("—".into(), |x| format!("{x:.2}")), text(), None);
@@ -690,17 +547,15 @@ fn deriv_detail(ui: &mut Ui, d: &mut DerivPane, coin: &str, board: Option<&Board
         if let Some(r) = row {
             ui.label(RichText::new(fmt_price(r.price)).font(mono(13.0)).color(text()));
             if let Some(c) = r.change_24h {
-                ui.label(RichText::new(pct(c, 2)).font(mono(12.0)).color(signed_color(c)));
+                ui.label(RichText::new(pct(c, 2)).font(mono(12.0)).color(signed(c)));
             }
             ui.label(RichText::new(format!("OI {}", fmt_usd(r.oi_usd))).font(mono(12.0)).color(text()));
             if let Some(f) = r.funding_8h {
-                ui.label(
-                    RichText::new(format!("funding {}", fmt_funding(f, d.apr))).font(mono(12.0)).color(signed_color(f)),
-                );
+                ui.label(RichText::new(format!("funding {}", fmt_funding(f, d.apr))).font(mono(12.0)).color(signed(f)));
             }
         }
         if board.is_some_and(|b| b.simulated) || d.history.as_ref().is_some_and(|h| h.simulated) {
-            simulated_badge(ui, "derivatives figures");
+            simulated(ui, "derivatives figures");
         }
     });
     ui.horizontal_wrapped(|ui| {
@@ -820,13 +675,13 @@ fn venue_table(ui: &mut Ui, r: &CoinRow, apr: bool) {
             t,
             4,
             &prem.map_or("—".into(), |x| format!("{:+.3}%", x * 100.0)),
-            signed_color(prem.unwrap_or(0.0)),
+            signed(prem.unwrap_or(0.0)),
             mono(12.0),
         );
         put(&p, t, 5, &v.funding.map_or("—".into(), |x| format!("{:+.4}%", x * 100.0)), text(), mono(12.0));
         put(&p, t, 6, &format!("{:.0}h", v.funding_hours), muted(), mono(12.0));
         let f8 = v.funding_8h();
-        put(&p, t, 7, &f8.map_or("—".into(), |f| fmt_funding(f, apr)), signed_color(f8.unwrap_or(0.0)), mono(12.0));
+        put(&p, t, 7, &f8.map_or("—".into(), |f| fmt_funding(f, apr)), signed(f8.unwrap_or(0.0)), mono(12.0));
         let next = v.next_funding.filter(|n| *n > now).map(|n| {
             let m = (n - now) / 60_000;
             format!("{}:{:02}", m / 60, m % 60)
@@ -855,9 +710,7 @@ fn term_table(ui: &mut Ui, t: &TermStructure, now: i64) {
                     .color(muted()),
             );
             ui.label(RichText::new(fmt_price(p.mark)).font(mono(12.0)).color(text()));
-            ui.label(
-                RichText::new(format!("{:+.3}%", p.basis() * 100.0)).font(mono(12.0)).color(signed_color(p.basis())),
-            );
+            ui.label(RichText::new(format!("{:+.3}%", p.basis() * 100.0)).font(mono(12.0)).color(signed(p.basis())));
             ui.label(
                 RichText::new(p.annualised(now).map_or("—".into(), |a| format!("{:.2}%", a * 100.0)))
                     .font(mono(12.0))
@@ -919,7 +772,7 @@ fn liquidations(ui: &mut Ui, l: &mut LiqPane, tape: Option<&SharedTape>) -> Opti
                 .on_hover_text(format!("{}: {s}", e.label()));
         }
         if t.simulated {
-            simulated_badge(ui, "liquidations");
+            simulated(ui, "liquidations");
         }
         note(ui, "Binance reports at most one liquidation per contract per second.");
     });
@@ -1032,13 +885,7 @@ fn liquidations(ui: &mut Ui, l: &mut LiqPane, tape: Option<&SharedTape>) -> Opti
                 let big = x.usd >= 100_000.0;
                 let font = if big { mono(12.5) } else { mono(12.0) };
                 let cols = [0.0, 70.0, 108.0, 170.0];
-                p.text(
-                    pos2(r.left() + cols[0], r.center().y),
-                    Align2::LEFT_CENTER,
-                    local_hms(x.ts),
-                    mono(11.5),
-                    muted(),
-                );
+                p.text(pos2(r.left() + cols[0], r.center().y), Align2::LEFT_CENTER, hms(x.ts), mono(11.5), muted());
                 p.text(
                     pos2(r.left() + dp(cols[1]), r.center().y),
                     Align2::LEFT_CENTER,
@@ -1079,23 +926,6 @@ fn liquidations(ui: &mut Ui, l: &mut LiqPane, tape: Option<&SharedTape>) -> Opti
 }
 
 // ---- HEAT / FOOT ---------------------------------------------------------------------
-
-/// Bookmap-style ramp: deep blue → cyan → yellow → white.
-fn heat_color(t: f32) -> Color32 {
-    let t = t.clamp(0.0, 1.0);
-    let stops: [(f32, [f32; 3]); 5] = [
-        (0.0, [8.0, 10.0, 30.0]),
-        (0.25, [20.0, 60.0, 140.0]),
-        (0.5, [0.0, 190.0, 210.0]),
-        (0.8, [250.0, 220.0, 40.0]),
-        (1.0, [255.0, 255.0, 255.0]),
-    ];
-    let k = stops.iter().position(|s| s.0 >= t).unwrap_or(4).max(1);
-    let (a, b) = (stops[k - 1], stops[k]);
-    let u = (t - a.0) / (b.0 - a.0).max(1e-6);
-    let c = |i: usize| (a.1[i] + (b.1[i] - a.1[i]) * u) as u8;
-    Color32::from_rgb(c(0), c(1), c(2))
-}
 
 fn flow_header(ui: &mut Ui, f: &mut FlowPane) -> Option<Action> {
     let mut action = None;
@@ -1160,10 +990,10 @@ fn flow_header(ui: &mut Ui, f: &mut FlowPane) -> Option<Action> {
                 let c = if status == "live" || status == "simulated" { theme::up() } else { theme::down() };
                 ui.label(RichText::new(format!("● {sym}")).font(mono(11.0)).color(c)).on_hover_text(status);
                 if let Some(s) = since {
-                    note(ui, format!("since {}", local_hms(s)));
+                    note(ui, format!("since {}", hms(s)));
                 }
                 if sim {
-                    simulated_badge(ui, "trades and the order book");
+                    simulated(ui, "trades and the order book");
                 }
             }
             None => note(ui, "connecting…"),
@@ -1357,7 +1187,7 @@ fn heatmap(ui: &mut Ui, f: &mut FlowPane, flow: &SharedFlow, rect: Rect, hover: 
             && let Some(c) = cols.get(k as usize)
         {
             let size = c.size_at(heat.bucket(price));
-            let tip = format!("{}  {}  resting {:.3} {}", local_hms(c.ts), fmt_price(price), size, g.coin);
+            let tip = format!("{}  {}  resting {:.3} {}", hms(c.ts), fmt_price(price), size, g.coin);
             p.text(pos2(plot.left() + 6.0, plot.top() + 10.0), Align2::LEFT_CENTER, tip, mono(11.5), Color32::WHITE);
         }
     }
@@ -1440,10 +1270,10 @@ fn footprint(ui: &mut Ui, f: &mut FlowPane, flow: &SharedFlow, rect: Rect, hover
             pos2(left + cw - 1.0, plot.bottom() + 3.0 + delta_h),
         );
         let dl = c.delta();
-        p.rect_filled(dr, 2.0, signed_color(dl).gamma_multiply(0.15));
+        p.rect_filled(dr, 2.0, signed(dl).gamma_multiply(0.15));
         if cw >= dp(34.0) {
             let label = format!("{}{}", if dl < 0.0 { "-" } else { "+" }, fmt_q(dl.abs()));
-            p.text(dr.center(), Align2::CENTER_CENTER, label, mono(10.5), signed_color(dl));
+            p.text(dr.center(), Align2::CENTER_CENTER, label, mono(10.5), signed(dl));
         }
     }
     price_axis(&p, plot, lo, hi, g.last);
@@ -1491,7 +1321,7 @@ fn predict(ui: &mut Ui, pp: &mut PredPane, markets: Option<&Result<Vec<Market>, 
             egui::TextEdit::singleline(&mut pp.query).hint_text("search markets").font(mono(12.0)).desired_width(180.0),
         );
         if markets.is_some_and(|m| m.as_ref().is_ok_and(|v| v.first().is_some_and(|x| x.id.starts_with("sample-")))) {
-            simulated_badge(ui, "markets and prices");
+            simulated(ui, "markets and prices");
         }
     });
     let ms = match markets {
@@ -1556,7 +1386,7 @@ fn predict(ui: &mut Ui, pp: &mut PredPane, markets: Option<&Result<Vec<Market>, 
                             Align2::RIGHT_CENTER,
                             format!("{:+.1}", c * 100.0),
                             mono(11.5),
-                            signed_color(c),
+                            signed(c),
                         );
                     }
                     p.text(

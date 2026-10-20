@@ -13,15 +13,25 @@
 //!   leaderboard and vaults, and positioning of the top traders (cohorts, liquidation levels).
 //! - [`prints`]: large Hyperliquid trades with the wallets on both sides.
 //! - [`options_flow`]: Deribit BTC/ETH option trades (premium, IV, blocks) and summaries.
+//! - [`labels`]: names and tags for wallets (yours, vaults, leaderboard, behaviour).
+//! - [`hl_eco`]: Hyperliquid at a glance: core perps, HIP-3 DEXs, spot, HLP, fees/revenue.
+//! - [`market`]: returns, taker-flow CVD and seasonality per coin; [`alerts`]: alert rules.
+//! - [`news`]: the multi-source news wire; [`kol`]: KOL calls from X with a scorecard.
 //! - [`sample`]: deterministic offline data for all of the above (`HD_PROVIDER=sample`).
 //!
 //! No API keys are needed. Every parser is a pure function over the venue's JSON, tested
 //! against fixtures in `tests/fixtures`; the network code is a thin layer on top.
 
+pub mod alerts;
 pub mod deribit;
 pub mod history;
+pub mod hl_eco;
 pub mod hyperliquid;
+pub mod kol;
+pub mod labels;
 pub mod liq;
+pub mod market;
+pub mod news;
 pub mod options_flow;
 pub mod orderflow;
 pub mod perps;
@@ -84,11 +94,21 @@ impl Http {
 
     /// The request is built immediately, so the returned future borrows nothing (handy in
     /// `tokio::join!` with temporary URLs).
-    pub fn get(&self, url: &str, query: &[(&str, String)]) -> impl Future<Output = Result<String>> + Send + 'static {
+    pub fn get(&self, url: &str, query: &[(&str, String)]) -> impl Future<Output = Result<String>> + Send + use<> {
         Self::send(self.client.get(url).query(query), format!("GET {url}"))
     }
 
-    pub fn post_json(&self, url: &str, body: &Value) -> impl Future<Output = Result<String>> + Send + 'static {
+    /// GET with an `Authorization: Bearer` token (never logged; errors carry only the URL).
+    pub fn get_bearer(
+        &self,
+        url: &str,
+        query: &[(&str, String)],
+        token: &str,
+    ) -> impl Future<Output = Result<String>> + Send + use<> {
+        Self::send(self.client.get(url).query(query).bearer_auth(token), format!("GET {url}"))
+    }
+
+    pub fn post_json(&self, url: &str, body: &Value) -> impl Future<Output = Result<String>> + Send + use<> {
         Self::send(self.client.post(url).json(body), format!("POST {url}"))
     }
 

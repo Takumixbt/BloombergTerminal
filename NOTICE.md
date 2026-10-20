@@ -1,37 +1,31 @@
-# Notice and attribution
+# Notice
 
-This project is a fork of **[hyperdesk](https://github.com/michaelshimeles/hyperdesk)** by
-Michael Shimeles (imported from commit `d6006d6`), extended with:
+## Credits
 
-- a Windows build (data folder, fonts, Credential Manager secrets, icon and version resource,
-  GUI subsystem with a log file, installer and CI);
-- crypto derivatives, liquidations, order-flow and prediction-market panes in the new
-  `crates/flow` (`hd-flow`), inspired by the public feature sets of
-  [Velo](https://velo.xyz) and [OpenMarket](https://openmarket.xyz);
-- Hyperliquid trader intelligence and crypto options flow, inspired by the public feature
-  lists of [Hyperdash](https://hyperdash.com) and [Gambit Terminal](https://terminal.gambit.zone).
+Hyperdesk's terminal core (command line, docking workspace, GPU charts, indicators, themes,
+Congress trade tracking and the SnapTrade integration) started from
+[terminal-rs](https://github.com/michaelshimeles/terminal-rs) by Michael Shimeles. Hyperdesk adds
+the Windows app and installer, everything in `crates/flow` (derivatives, order flow, Hyperliquid,
+options flow, market dashboard, news wire, KOL calls, prediction markets, alerts), the panes that
+show them (`app/src/app/flow_view.rs`, `hl_view.rs`, `market_view.rs`, `kit.rs`,
+`app/src/worker/flow.rs`), and its own name, icon and theme.
 
-No code, assets, branding, layout or data from Velo, OpenMarket, Hyperdash, Gambit,
-TradingView or Bloomberg is used. Gambit states that its software, design and layout are
-proprietary; only its one-line public description of features (charts, news, options flow,
-on-chain data, a Hyperliquid order ticket) informed this work, and its site was never
-accessed or copied. These products were only studied for what features they offer; every pane here is built on the
-venues' own public APIs (see [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)).
+Feature ideas were studied from the public descriptions of [Velo](https://velo.xyz),
+[OpenMarket](https://openmarket.xyz), [Hyperdash](https://hyperdash.com), [hl.eco](https://hl.eco)
+and [Gambit Terminal](https://terminal.gambit.zone) (see [`docs/RESEARCH.md`](docs/RESEARCH.md)).
+None of their code, data, branding or design is used, and Gambit's site, which marks its design as
+proprietary, was not accessed. All data comes from the venues' own public APIs
+([`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)).
 
 ## Licence status
 
-At the time of import the upstream repository **did not include a licence file**. Without a
-licence, the upstream code is "all rights reserved" by default, which means copying,
-modifying and redistributing it needs the author's permission. Until the upstream author adds
-a licence (or grants permission), treat this repository as for **personal, non-commercial
-use**, keep it private, and do not distribute builds. If upstream later adopts a licence, its
-terms apply to the upstream portions and this notice should be updated.
-
-The new code in `crates/flow`, `app/src/app/flow_view.rs`, `app/src/app/hl_view.rs`,
-`app/src/worker/flow.rs`,
-`app/src/platform.rs` and the Windows scripts was written for this fork.
+terminal-rs did not include a licence when it was imported. Without a licence, its code is "all
+rights reserved" by default, so copying, modifying and redistributing it needs the author's
+permission. Until that is granted (or terminal-rs adopts a licence), keep this repository private,
+use it personally, and do not distribute builds. Update this notice when the situation changes.
 
 ## Data terms
 
-Each data source has its own terms of use (for example, the Senate eFD forbids commercial use;
-exchanges restrict access by country). You are responsible for complying with them.
+Each data source has its own terms of use: for example, the Senate eFD forbids commercial use,
+exchanges restrict access by country, and the X API has its own developer terms. You are
+responsible for complying with them.

@@ -110,6 +110,43 @@ API, so they may change.
 There is no free source for US equity options flow ("unusual options activity"); Yahoo's
 chains (`OMON`) show volume and open interest per contract instead.
 
+## Market dashboard, seasonality and alerts (`MKT`, `SEASON`, `CALRT`) — Velo-style
+
+| What | Endpoint | Notes |
+|---|---|---|
+| Returns 1h–30d and taker-flow CVD | `GET fapi.binance.com/fapi/v1/klines?interval=1h&limit=744` for the 40 largest coins by OI | CVD = taker buy quote volume × 2 − quote volume; 6 requests at a time, cached 5 min |
+| Seasonality | the same klines, two pages (~125 days) for one coin | Hourly returns grouped by UTC weekday × hour and by session |
+| OI and funding columns, alert values | the derivatives board above | Alerts are checked locally every few seconds; liquidation rules use the `LIQ` stream |
+
+## Hyperliquid ecosystem (`HLECO`) — hl.eco-style
+
+| What | Endpoint | Notes |
+|---|---|---|
+| Core perps (OI, volume, HYPE) | `POST api.hyperliquid.xyz/info {"type":"metaAndAssetCtxs"}` | |
+| HIP-3 builder DEXs and their markets | `{"type":"perpDexs"}`, then `metaAndAssetCtxs` with `"dex"` | |
+| Spot tokens, market cap | `{"type":"spotMetaAndAssetCtxs"}` | Market cap = circulating supply × mark |
+| HLP vault | the vault list above | |
+| Daily fees and revenue | `GET api.llama.fi/summary/fees/hyperliquid?dataType=dailyFees` / `dailyRevenue` | DefiLlama's free API |
+
+## News wire (`WIRE`) — Gambit-style
+
+RSS and Atom feeds, polled every 90 s while a wire pane is open, merged and de-duplicated:
+CoinDesk, Cointelegraph, The Block, Decrypt, Blockworks, Bitcoin Magazine, CryptoSlate,
+Hyperliquid's Medium, the Federal Reserve press releases and SEC press releases. Coins are tagged
+from `$CASHTAGS`, tickers known to the derivatives board and common coin names; story tags come
+from keyword lists. Replace the list with your own in `news_feeds.json` in the data folder.
+
+## KOL calls (`CALLS`)
+
+| Source | Endpoint | Notes |
+|---|---|---|
+| X | `GET api.x.com/2/tweets/search/recent` (`from:a OR from:b …`) | Needs your own bearer token in `X_BEARER_TOKEN`; X's free tier does not include reading |
+| RSS bridges | any RSS/Atom URL per account (RSSHub, Nitter, rss.app…) | No token needed |
+
+A post becomes a call when it names a coin and a clear direction. The price at the call is the
+board price when Hyperdesk first sees the post, so calls made while Hyperdesk was closed start
+from the next price it sees. Calls are stored in `kol_calls.json`.
+
 ## Things to know
 
 - **Geo-restrictions.** Binance (`fapi.binance.com`, `api.binance.com`) refuses connections from

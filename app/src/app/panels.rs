@@ -127,7 +127,13 @@ impl TerminalApp {
             | PaneKind::Leaders(_)
             | PaneKind::HlPositioning(_)
             | PaneKind::Prints(_)
-            | PaneKind::OptionFlow(_) => {}
+            | PaneKind::OptionFlow(_)
+            | PaneKind::Wire(_)
+            | PaneKind::Kol(_)
+            | PaneKind::Eco
+            | PaneKind::Market(_)
+            | PaneKind::Season(_)
+            | PaneKind::CryptoAlerts(_) => {}
         }
         match self.panes[i].kind {
             PaneKind::Deriv(_) | PaneKind::Liq(_) | PaneKind::Flow(_) | PaneKind::Predict(_) => {
@@ -138,6 +144,12 @@ impl TerminalApp {
             | PaneKind::HlPositioning(_)
             | PaneKind::Prints(_)
             | PaneKind::OptionFlow(_) => actions.extend(self.hl_content(ui, i)),
+            PaneKind::Wire(_)
+            | PaneKind::Kol(_)
+            | PaneKind::Eco
+            | PaneKind::Market(_)
+            | PaneKind::Season(_)
+            | PaneKind::CryptoAlerts(_) => actions.extend(self.market_content(ui, i)),
             PaneKind::Watchlist => actions.extend(self.watchlist(ui)),
             PaneKind::Help => self.help_panel(ui),
             PaneKind::Settings => {

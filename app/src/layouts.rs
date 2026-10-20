@@ -171,6 +171,32 @@ pub enum PaneSettings {
         #[serde(default)]
         currency: Option<String>,
     },
+    /// The news wire.
+    Wire,
+    /// KOL calls from X, with the accounts followed.
+    Kol {
+        #[serde(default)]
+        sources: Vec<hd_flow::kol::KolSource>,
+    },
+    /// Hyperliquid ecosystem overview.
+    Eco,
+    /// Market dashboard (returns, CVD, OI, funding).
+    Market {
+        #[serde(default)]
+        view: crate::app::MarketView,
+        #[serde(default = "two")]
+        window: usize,
+    },
+    /// Seasonality for one coin.
+    Season {
+        coin: String,
+    },
+    /// Crypto alert rules.
+    CryptoAlerts,
+}
+
+fn two() -> usize {
+    2
 }
 
 fn minute() -> i64 {
@@ -345,6 +371,22 @@ impl LayoutDoc {
             PaneSettings::Liquidations { coin: None, min_usd: 0.0 },
         ];
         Self::preset(Self::HYPERLIQUID_DESK, Layout::Grid3x2, panes)
+    }
+
+    /// Name of the built-in market workspace, created on first launch.
+    pub const MARKET_DESK: &'static str = "Market Desk";
+
+    /// Market dashboard, news wire, KOL calls, Hyperliquid ecosystem, seasonality and alerts.
+    pub fn market_workspace() -> LayoutDoc {
+        let panes = vec![
+            PaneSettings::Market { view: crate::app::MarketView::Heatmap, window: 2 },
+            PaneSettings::Wire,
+            PaneSettings::Kol { sources: Vec::new() },
+            PaneSettings::Eco,
+            PaneSettings::Season { coin: "BTC".into() },
+            PaneSettings::CryptoAlerts,
+        ];
+        Self::preset(Self::MARKET_DESK, Layout::Grid3x2, panes)
     }
 
     pub fn preset(name: &str, layout: Layout, panes: Vec<PaneSettings>) -> LayoutDoc {
@@ -541,9 +583,11 @@ mod tests {
 
     #[test]
     fn built_in_crypto_desks_round_trip() {
-        for doc in
-            [LayoutDoc::crypto_workspace(&crate::prefs::PanelDefaults::default()), LayoutDoc::hyperliquid_workspace()]
-        {
+        for doc in [
+            LayoutDoc::crypto_workspace(&crate::prefs::PanelDefaults::default()),
+            LayoutDoc::hyperliquid_workspace(),
+            LayoutDoc::market_workspace(),
+        ] {
             assert_eq!(doc.panes.len(), 6);
             let back = LayoutDoc::from_json(&doc.to_json()).unwrap();
             assert_eq!(back, doc, "{}", doc.name);

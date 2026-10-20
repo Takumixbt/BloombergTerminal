@@ -297,6 +297,12 @@ impl TerminalApp {
                         &["OFLOW", "OFLOW ETH"],
                         "Options flow (Deribit): premium, IV, blocks, put/call, strikes, expiries",
                     ),
+                    (&["MKT", "MKT HEAT"], "Market: returns 1h–30d, taker CVD, OI, funding; returns heatmap"),
+                    (&["WIRE", "WIRE SOL"], "News wire: crypto + macro feeds tagged by coin and story"),
+                    (&["CALLS"], "KOL calls from X: coin, side, levels, move since the call, scorecard"),
+                    (&["HLECO"], "Hyperliquid ecosystem: perps, HIP-3 DEXs, spot, HLP, fees and revenue"),
+                    (&["SEASON BTC"], "Seasonality: average return by weekday × hour and by session"),
+                    (&["CALRT", "CALRT BTC > 70k"], "Crypto alerts: price, change, funding, OI, liquidations"),
                 ],
             );
 

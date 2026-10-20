@@ -10,6 +10,8 @@ mod demo;
 mod flow_view;
 mod hl_view;
 mod hotkeys_view;
+mod kit;
+mod market_view;
 mod options_view;
 mod palette_view;
 mod panels;
@@ -22,6 +24,7 @@ mod workspace;
 pub use broker::PosSort;
 pub use flow_view::FlowView;
 pub use hl_view::SavedWallet;
+pub use market_view::MarketView;
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -96,6 +99,18 @@ pub enum PaneKind {
     Prints(Box<hl_view::PrintsPane>),
     /// Deribit options flow (`OFLOW`).
     OptionFlow(Box<hl_view::OptionFlowPane>),
+    /// The news wire (`WIRE`).
+    Wire(Box<market_view::WirePane>),
+    /// KOL calls from X (`CALLS`).
+    Kol(Box<market_view::KolPane>),
+    /// Hyperliquid ecosystem (`HLECO`).
+    Eco,
+    /// Market dashboard (`MKT`).
+    Market(Box<market_view::MarketPane>),
+    /// Seasonality (`SEASON`).
+    Season(Box<market_view::SeasonPane>),
+    /// Crypto alerts (`CALRT`).
+    CryptoAlerts(Box<market_view::AlertsPane>),
 }
 
 pub struct OptionsPane {
@@ -235,6 +250,12 @@ impl PaneKind {
                 None => "Whale Prints".into(),
             },
             PaneKind::OptionFlow(o) => format!("{} Options Flow", o.currency.as_deref().unwrap_or("Crypto")),
+            PaneKind::Wire(_) => "News Wire".into(),
+            PaneKind::Kol(_) => "KOL Calls".into(),
+            PaneKind::Eco => "Hyperliquid Eco".into(),
+            PaneKind::Market(_) => "Market".into(),
+            PaneKind::Season(s) => format!("{} Seasonality", s.coin),
+            PaneKind::CryptoAlerts(_) => "Crypto Alerts".into(),
         }
     }
 
@@ -265,6 +286,12 @@ impl PaneKind {
             PaneKind::HlPositioning(_) => "HLPOS",
             PaneKind::Prints(_) => "PRNT",
             PaneKind::OptionFlow(_) => "OFLW",
+            PaneKind::Wire(_) => "WIRE",
+            PaneKind::Kol(_) => "CALLS",
+            PaneKind::Eco => "HLECO",
+            PaneKind::Market(_) => "MKT",
+            PaneKind::Season(_) => "SEAS",
+            PaneKind::CryptoAlerts(_) => "CALRT",
         }
     }
 
@@ -343,6 +370,12 @@ impl PaneKind {
             PaneKind::HlPositioning(p) => PaneSettings::HlPositioning { coin: p.coin.clone() },
             PaneKind::Prints(p) => PaneSettings::Prints { coin: p.coin.clone(), min_usd: p.min_usd },
             PaneKind::OptionFlow(o) => PaneSettings::OptionFlow { currency: o.currency.clone() },
+            PaneKind::Wire(_) => PaneSettings::Wire,
+            PaneKind::Kol(k) => PaneSettings::Kol { sources: k.sources.clone() },
+            PaneKind::Eco => PaneSettings::Eco,
+            PaneKind::Market(m) => PaneSettings::Market { view: m.view, window: m.window },
+            PaneKind::Season(s) => PaneSettings::Season { coin: s.coin.clone() },
+            PaneKind::CryptoAlerts(_) => PaneSettings::CryptoAlerts,
         }
     }
 
@@ -407,7 +440,35 @@ impl PaneKind {
             PaneSettings::HlPositioning { coin } => PaneKind::hl_positioning(&coin),
             PaneSettings::Prints { coin, min_usd } => PaneKind::prints(coin, min_usd),
             PaneSettings::OptionFlow { currency } => PaneKind::option_flow(currency),
+            PaneSettings::Wire => PaneKind::wire(None),
+            PaneSettings::Kol { sources } => PaneKind::Kol(Box::new(market_view::KolPane::new(sources))),
+            PaneSettings::Eco => PaneKind::Eco,
+            PaneSettings::Market { view, window } => {
+                PaneKind::Market(Box::new(market_view::MarketPane { view, window: window.min(4), sort_desc: true }))
+            }
+            PaneSettings::Season { coin } => PaneKind::season(&coin),
+            PaneSettings::CryptoAlerts => {
+                PaneKind::CryptoAlerts(Box::new(market_view::AlertsPane { input: String::new(), error: None }))
+            }
         }
+    }
+
+    fn wire(coin: Option<String>) -> PaneKind {
+        PaneKind::Wire(Box::new(market_view::WirePane {
+            query: String::new(),
+            source: None,
+            tag: None,
+            important_only: false,
+            coin: coin.map(|c| hd_flow::venue::coin_of_key(&c)),
+        }))
+    }
+
+    fn season(coin: &str) -> PaneKind {
+        PaneKind::Season(Box::new(market_view::SeasonPane {
+            coin: hd_flow::venue::coin_of_key(coin),
+            data: None,
+            fetched: None,
+        }))
     }
 
     fn leaders(vaults: bool) -> PaneKind {
@@ -629,6 +690,10 @@ pub struct TerminalApp {
     flow: flow_view::FlowData,
     /// Hyperliquid leaderboard, positioning and the prints / options-flow streams.
     hl: hl_view::HlData,
+    /// News wire, ecosystem and market snapshots, and the crypto alert rules.
+    market: market_view::MarketData,
+    /// Names and tags for Hyperliquid wallets.
+    labels: hd_flow::labels::Labels,
 }
 
 /// Resolve a run of words (`BTCUSD CRNCY AAPL US EQUITY MSFT`) into market keys.
@@ -760,6 +825,8 @@ impl TerminalApp {
             palette: crate::palette::Palette::load(&data_dir().join("palette.json")),
             flow: Default::default(),
             hl: Default::default(),
+            market: Default::default(),
+            labels: hd_flow::labels::Labels::load(&data_dir().join("wallet_labels.json")),
         };
         let mut doc = None;
         if let Some(s) = &settings {
@@ -790,7 +857,11 @@ impl TerminalApp {
         // New installs also get ready-made crypto workspaces (`LAYOUT Crypto Desk`,
         // `LAYOUT Hyperliquid Desk`).
         if first_run {
-            for doc in [LayoutDoc::crypto_workspace(&app.prefs.panels), LayoutDoc::hyperliquid_workspace()] {
+            for doc in [
+                LayoutDoc::crypto_workspace(&app.prefs.panels),
+                LayoutDoc::hyperliquid_workspace(),
+                LayoutDoc::market_workspace(),
+            ] {
                 if !app.store.exists(&doc.name)
                     && let Err(e) = app.store.save(&doc)
                 {
@@ -906,6 +977,8 @@ impl TerminalApp {
             Command::SymbolFunction(s, Function::Prints(None)) => {
                 self.apply(Function::Prints(Some(hd_flow::venue::coin_of_key(&s))));
             }
+            Command::SymbolFunction(s, Function::Wire(None)) => self.apply(Function::Wire(Some(s))),
+            Command::SymbolFunction(s, Function::Season(None)) => self.apply(Function::Season(Some(s))),
             Command::SymbolFunction(s, Function::OptionFlow(None)) => {
                 self.apply(Function::OptionFlow(Some(hd_flow::venue::coin_of_key(&s))));
             }
@@ -1054,6 +1127,42 @@ impl TerminalApp {
             }
             Function::Prints(coin) => self.open_panel(PaneKind::prints(coin, 0.0)),
             Function::OptionFlow(ccy) => self.open_panel(PaneKind::option_flow(ccy)),
+            Function::Wire(coin) => self.open_panel(PaneKind::wire(coin)),
+            Function::Kol => {
+                // Keep the followed accounts: reuse an existing calls pane when there is one.
+                match self.panes.iter().find(|p| matches!(p.kind, PaneKind::Kol(_))).map(|p| p.id) {
+                    Some(id) => {
+                        self.reveal(id);
+                        self.focus = id;
+                    }
+                    None => self.open_panel(PaneKind::Kol(Box::new(market_view::KolPane::new(Vec::new())))),
+                }
+            }
+            Function::Eco => self.open_panel(PaneKind::Eco),
+            Function::Market { heatmap } => self.open_panel(PaneKind::Market(Box::new(market_view::MarketPane {
+                view: if heatmap { MarketView::Heatmap } else { MarketView::Table },
+                window: 2,
+                sort_desc: true,
+            }))),
+            Function::Season(coin) => {
+                let coin = coin.unwrap_or_else(|| self.focused_coin());
+                self.open_panel(PaneKind::season(&coin));
+            }
+            Function::CryptoAlerts(rule) => {
+                if !rule.trim().is_empty() {
+                    match hd_flow::alerts::Rule::parse(&rule) {
+                        Some(r) => {
+                            self.status = format!("Alert added: {}", r.describe());
+                            self.market.rules.push(r);
+                        }
+                        None => self.status = format!("Could not read alert {rule:?}; try BTC > 70k or SOL CHG > 8%"),
+                    }
+                }
+                self.open_panel(PaneKind::CryptoAlerts(Box::new(market_view::AlertsPane {
+                    input: String::new(),
+                    error: None,
+                })));
+            }
             Function::Options => {
                 let sym = self.optionable_symbol();
                 self.open_panel(PaneKind::Options(Box::new(OptionsPane::new(&sym, 12, true))));
@@ -1259,7 +1368,11 @@ impl TerminalApp {
                 Response::Curves(c) => self.curves = Some(c),
                 Response::SearchHits { query, hits } => self.net_hits = (query, hits),
                 Response::Trade(r) => self.on_trade(*r),
-                Response::Flow(r) => self.hl_response(*r),
+                Response::Flow(r) => {
+                    if let Some(r) = self.market_response(*r) {
+                        self.hl_response(r);
+                    }
+                }
                 Response::CongressRefreshed(summary) => {
                     self.congress_status = summary.to_string();
                     self.congress_checked = Some(chrono::Local::now());
@@ -1561,6 +1674,7 @@ impl TerminalApp {
         self.broker_periodic(&visible);
         self.flow_periodic(&visible);
         self.hl_periodic(&visible);
+        self.market_periodic(&visible);
         if let Some((q, at)) = &self.search_pending
             && at.elapsed() > Duration::from_millis(300)
         {

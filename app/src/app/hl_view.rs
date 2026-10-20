@@ -12,13 +12,14 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use egui::{Align2, Color32, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
+use egui::{Align2, Rect, RichText, Sense, Stroke, Ui, pos2, vec2};
 use hd_flow::fmt_usd;
 use hd_flow::hyperliquid::{self, Account, COHORTS, Fill, Leader, Perf, Positioning, Vault, short_address};
+use hd_flow::labels::Labels;
 use hd_flow::options_flow::OptionTrade;
 use serde::{Deserialize, Serialize};
 
-use super::flow_view::fmt_price;
+use super::kit::*;
 use super::{PaneKind, TerminalApp};
 use crate::congress_view::Action;
 use crate::theme::{self, amber, dp, mono, muted, text, ui_font};
@@ -42,6 +43,8 @@ pub struct WalletPane {
     pub account: Option<Result<Box<Account>, String>>,
     pub fills: Vec<Fill>,
     pub fetched: Option<Instant>,
+    /// Label being edited for the shown wallet.
+    pub label_edit: Option<String>,
 }
 
 impl WalletPane {
@@ -53,6 +56,7 @@ impl WalletPane {
             account: None,
             fills: Vec::new(),
             fetched: None,
+            label_edit: None,
         }
     }
 
@@ -198,6 +202,10 @@ impl TerminalApp {
                 }
             }
             FlowResponse::Leaders { leaders, vaults } => {
+                if let Ok(l) = &leaders {
+                    self.labels.absorb_leaders(l);
+                }
+                self.labels.absorb_vaults(&vaults);
                 if leaders.is_ok() || !matches!(self.hl.leaders, Some(Ok(_))) {
                     self.hl.leaders = Some(leaders);
                 }
@@ -227,11 +235,18 @@ impl TerminalApp {
     pub(super) fn hl_content(&mut self, ui: &mut Ui, i: usize) -> Vec<Action> {
         let hl = &self.hl;
         let offline = self.provider.eq_ignore_ascii_case("sample") || hd_flow::offline();
+        let labels = &mut self.labels;
         match &mut self.panes[i].kind {
-            PaneKind::Wallet(w) => wallet(ui, w),
-            PaneKind::Leaders(l) => leaders(ui, l, hl.leaders.as_ref(), &hl.vaults, offline),
-            PaneKind::HlPositioning(p) => positioning(ui, p, hl.positioning.as_ref()),
-            PaneKind::Prints(p) => prints(ui, p, hl.prints.as_ref()),
+            PaneKind::Wallet(w) => {
+                let (actions, changed) = wallet(ui, w, labels);
+                if changed && let Err(e) = labels.save(&crate::worker::data_dir().join("wallet_labels.json")) {
+                    tracing::warn!("saving wallet labels: {e:#}");
+                }
+                actions
+            }
+            PaneKind::Leaders(l) => leaders(ui, l, hl.leaders.as_ref(), &hl.vaults, offline, labels),
+            PaneKind::HlPositioning(p) => positioning(ui, p, hl.positioning.as_ref(), labels),
+            PaneKind::Prints(p) => prints(ui, p, hl.prints.as_ref(), labels),
             PaneKind::OptionFlow(o) => option_flow(ui, o, hl.oflow.as_ref()),
             _ => Vec::new(),
         }
@@ -266,101 +281,11 @@ pub fn position_changes(old: &Account, new: &Account) -> Vec<String> {
 
 // ---- Helpers -------------------------------------------------------------------------
 
-fn title(ui: &mut Ui, s: &str) {
-    ui.label(RichText::new(s).font(mono(12.5)).color(amber()));
-}
-
-fn note(ui: &mut Ui, s: impl Into<String>) {
-    ui.label(RichText::new(s.into()).font(ui_font(11.0)).color(muted()));
-}
-
-fn simulated(ui: &mut Ui) {
-    ui.label(RichText::new(" SIMULATED ").font(ui_font(10.5)).color(Color32::BLACK).background_color(amber()))
-        .on_hover_text("Offline sample data (HD_PROVIDER=sample).");
-}
-
-fn signed(x: f64) -> Color32 {
-    if x > 0.0 {
-        theme::up()
-    } else if x < 0.0 {
-        theme::down()
-    } else {
-        muted()
-    }
-}
-
-fn signed_usd(x: f64) -> String {
-    if x >= 0.0 { format!("+{}", fmt_usd(x)) } else { fmt_usd(x) }
-}
-
-/// `12.3M`, `649.6K`, `1.2345` for coin quantities.
-fn qty(x: f64) -> String {
-    let a = x.abs();
-    if a >= 1e6 {
-        format!("{:.2}M", x / 1e6)
-    } else if a >= 1e4 {
-        format!("{:.1}K", x / 1e3)
-    } else if a >= 100.0 {
-        format!("{x:.1}")
-    } else {
-        format!("{x:.4}")
-    }
-}
-
-fn hms(ms: i64) -> String {
-    chrono::DateTime::from_timestamp_millis(ms)
-        .map(|d| d.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
-        .unwrap_or_default()
-}
-
-fn ago(ms: i64) -> String {
-    let s = (chrono::Utc::now().timestamp_millis() - ms).max(0) / 1000;
-    if s < 3600 {
-        format!("{}m", s / 60)
-    } else if s < 86_400 {
-        format!("{}h", s / 3600)
-    } else {
-        format!("{}d", s / 86_400)
-    }
-}
-
-/// A painted table row: `cells` are `(text, colour, right-aligned)` at fixed widths.
-fn row(ui: &mut Ui, widths: &[f32], cells: &[(String, Color32, bool)], header: bool) -> egui::Response {
-    let s = dp(1.0);
-    let total: f32 = widths.iter().map(|w| w * s).sum();
-    let h = dp(19.0);
-    let (r, resp) = ui.allocate_exact_size(
-        vec2(total.max(ui.available_width()), h),
-        if header { Sense::hover() } else { Sense::click() },
-    );
-    let p = ui.painter();
-    if header {
-        p.rect_filled(r, 3.0, theme::header());
-    } else {
-        widgets::hover_wash(ui, r, &resp, false);
-    }
-    let mut x = r.left();
-    for (k, (t, c, right)) in cells.iter().enumerate() {
-        let w = widths.get(k).copied().unwrap_or(60.0) * s;
-        let font = if header { ui_font(11.0) } else { mono(12.0) };
-        if *right {
-            p.text(pos2(x + w - 6.0, r.center().y), Align2::RIGHT_CENTER, t, font, *c);
-        } else {
-            p.text(pos2(x + 6.0, r.center().y), Align2::LEFT_CENTER, t, font, *c);
-        }
-        x += w;
-    }
-    resp
-}
-
-fn hdr(titles: &[&str], first_left: usize) -> Vec<(String, Color32, bool)> {
-    titles.iter().enumerate().map(|(k, t)| (t.to_string(), muted(), k >= first_left)).collect()
-}
-
 // ---- HLW: wallet ---------------------------------------------------------------------
 
-fn wallet(ui: &mut Ui, w: &mut WalletPane) -> Vec<Action> {
+fn wallet(ui: &mut Ui, w: &mut WalletPane, labels: &mut Labels) -> (Vec<Action>, bool) {
     let mut actions = Vec::new();
+    let mut changed = false;
     ui.horizontal_wrapped(|ui| {
         title(ui, "HYPERLIQUID WALLET");
         let r = ui.add(
@@ -395,7 +320,7 @@ fn wallet(ui: &mut Ui, w: &mut WalletPane) -> Vec<Action> {
             note(ui, "Saved:");
             let mut open = None;
             for s in &w.saved {
-                let label = if s.label.is_empty() { short_address(&s.address) } else { s.label.clone() };
+                let label = if s.label.is_empty() { labels.display(&s.address) } else { s.label.clone() };
                 let on = w.address.as_deref() == Some(s.address.as_str());
                 if ui.selectable_label(on, RichText::new(label).font(mono(11.5))).clicked() {
                     open = Some(s.address.clone());
@@ -411,21 +336,57 @@ fn wallet(ui: &mut Ui, w: &mut WalletPane) -> Vec<Action> {
             ui,
             "Paste any Hyperliquid address (or pick one in HLTOP, HLPOS or PRINTS) to see its positions, liquidation prices, PnL and fills. Positions are public on-chain data.",
         );
-        return actions;
+        return (actions, changed);
     };
     let acct = match &w.account {
         None => {
             ui.add(egui::Spinner::new());
-            return actions;
+            return (actions, changed);
         }
         Some(Err(e)) => {
             ui.label(RichText::new(format!("{}: {e}", short_address(&addr))).font(ui_font(12.0)).color(theme::down()));
-            return actions;
+            return (actions, changed);
         }
         Some(Ok(a)) => a.clone(),
     };
+    // Name, tags and your label.
     ui.horizontal_wrapped(|ui| {
-        ui.label(RichText::new(short_address(&addr)).font(mono(13.0)).color(text())).on_hover_text(&addr);
+        let name = labels.display(&addr);
+        ui.label(RichText::new(&name).font(mono(14.0)).color(amber())).on_hover_text(&addr);
+        if labels.label(&addr).is_some() {
+            ui.label(RichText::new(short_address(&addr)).font(mono(11.0)).color(muted())).on_hover_text(&addr);
+        }
+        for t in labels.account_tags(&acct) {
+            let c = match t.as_str() {
+                "High leverage" | "Underwater" | "Near liquidation" | "Rekt 30d" => theme::down(),
+                "Top 30d PnL" | "Top 10" => theme::up(),
+                _ => theme::accent(),
+            };
+            ui.label(
+                RichText::new(format!(" {t} ")).font(mono(10.5)).color(c).background_color(c.gamma_multiply(0.15)),
+            );
+        }
+        match &mut w.label_edit {
+            None => {
+                if ui.small_button("✎ Label").on_hover_text("Name this wallet (saved on this computer)").clicked() {
+                    w.label_edit = Some(labels.user.get(&addr).cloned().unwrap_or_default());
+                }
+            }
+            Some(buf) => {
+                let r =
+                    ui.add(egui::TextEdit::singleline(buf).hint_text("label").font(mono(12.0)).desired_width(140.0));
+                let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if enter || ui.small_button("Save").clicked() {
+                    labels.set_user(&addr, buf);
+                    changed = true;
+                    w.label_edit = None;
+                } else if ui.small_button("Cancel").clicked() {
+                    w.label_edit = None;
+                }
+            }
+        }
+    });
+    ui.horizontal_wrapped(|ui| {
         for (k, v, c) in [
             ("Value", fmt_usd(acct.account_value), text()),
             ("uPnL", signed_usd(acct.upnl()), signed(acct.upnl())),
@@ -542,7 +503,7 @@ fn wallet(ui: &mut Ui, w: &mut WalletPane) -> Vec<Action> {
         }
     });
     ui.ctx().request_repaint_after(Duration::from_secs(5));
-    actions
+    (actions, changed)
 }
 
 // ---- HLTOP: leaderboard and vaults ---------------------------------------------------
@@ -553,6 +514,7 @@ fn leaders(
     data: Option<&Result<Arc<Vec<Leader>>, String>>,
     vaults: &[Vault],
     sim: bool,
+    labels: &Labels,
 ) -> Vec<Action> {
     let mut actions = Vec::new();
     ui.horizontal_wrapped(|ui| {
@@ -579,7 +541,7 @@ fn leaders(
         }
         ui.add(egui::TextEdit::singleline(&mut l.filter).hint_text("filter").font(mono(12.0)).desired_width(110.0));
         if sim {
-            simulated(ui);
+            simulated(ui, "data");
         }
     });
     if l.vaults {
@@ -660,7 +622,11 @@ fn leaders(
                     &widths,
                     &[
                         ((k + 1).to_string(), muted(), false),
-                        (x.label(), if x.name.is_some() { amber() } else { text() }, false),
+                        (
+                            labels.display(&x.address),
+                            if labels.label(&x.address).is_some() { amber() } else { text() },
+                            false,
+                        ),
                         (fmt_usd(x.account_value), text(), true),
                         (signed_usd(p.pnl), signed(p.pnl), true),
                         (format!("{:+.1}%", p.roi * 100.0), signed(p.roi), true),
@@ -679,7 +645,12 @@ fn leaders(
 
 // ---- HLPOS: positioning of the top wallets -------------------------------------------
 
-fn positioning(ui: &mut Ui, pp: &mut PositioningPane, data: Option<&Result<Arc<Positioning>, String>>) -> Vec<Action> {
+fn positioning(
+    ui: &mut Ui,
+    pp: &mut PositioningPane,
+    data: Option<&Result<Arc<Positioning>, String>>,
+    labels: &Labels,
+) -> Vec<Action> {
     let mut actions = Vec::new();
     let pos = match data {
         None => {
@@ -705,7 +676,7 @@ fn positioning(ui: &mut Ui, pp: &mut PositioningPane, data: Option<&Result<Arc<P
             }
         }
         if pos.simulated {
-            simulated(ui);
+            simulated(ui, "data");
         }
     });
     let when = chrono::DateTime::from_timestamp(pos.updated, 0)
@@ -760,7 +731,7 @@ fn positioning(ui: &mut Ui, pp: &mut PositioningPane, data: Option<&Result<Arc<P
         egui::ScrollArea::vertical()
             .id_salt(("hlpos-top", &c.coin))
             .auto_shrink([false, false])
-            .show(&mut ru, |ui| top_positions(ui, c, &mut actions));
+            .show(&mut ru, |ui| top_positions(ui, c, &mut actions, labels));
         ui.advance_cursor_after_rect(rest);
     } else {
         // Narrow: everything stacked in one scroll area.
@@ -770,7 +741,7 @@ fn positioning(ui: &mut Ui, pp: &mut PositioningPane, data: Option<&Result<Arc<P
             let (map, _) = ui.allocate_exact_size(vec2(ui.available_width(), dp(240.0)), Sense::hover());
             liq_map(ui, map, c);
             ui.add_space(dp(4.0));
-            top_positions(ui, c, &mut actions);
+            top_positions(ui, c, &mut actions, labels);
         });
     }
     actions
@@ -797,7 +768,7 @@ fn cohort_table(ui: &mut Ui, c: &hyperliquid::CoinPositioning) {
     }
 }
 
-fn top_positions(ui: &mut Ui, c: &hyperliquid::CoinPositioning, actions: &mut Vec<Action>) {
+fn top_positions(ui: &mut Ui, c: &hyperliquid::CoinPositioning, actions: &mut Vec<Action>, labels: &Labels) {
     ui.label(RichText::new("LARGEST POSITIONS · click to open the wallet").font(mono(11.0)).color(muted()));
     let widths = [110.0, 56.0, 90.0, 90.0, 90.0, 80.0, 60.0];
     row(ui, &widths, &hdr(&["Wallet", "Side", "Value", "Entry", "Liq.", "uPnL", "Lev"], 2), true);
@@ -807,7 +778,7 @@ fn top_positions(ui: &mut Ui, c: &hyperliquid::CoinPositioning, actions: &mut Ve
             ui,
             &widths,
             &[
-                (short_address(addr), text(), false),
+                (labels.display(addr), if labels.label(addr).is_some() { amber() } else { text() }, false),
                 (side.0.into(), side.1, false),
                 (fmt_usd(p.value), text(), true),
                 (fmt_price(p.entry), text(), true),
@@ -916,7 +887,7 @@ fn liq_map(ui: &Ui, rect: Rect, c: &hyperliquid::CoinPositioning) {
 
 // ---- PRINTS --------------------------------------------------------------------------
 
-fn prints(ui: &mut Ui, pp: &mut PrintsPane, tape: Option<&SharedPrints>) -> Vec<Action> {
+fn prints(ui: &mut Ui, pp: &mut PrintsPane, tape: Option<&SharedPrints>, labels: &Labels) -> Vec<Action> {
     let mut actions = Vec::new();
     ui.horizontal_wrapped(|ui| {
         title(
@@ -953,7 +924,7 @@ fn prints(ui: &mut Ui, pp: &mut PrintsPane, tape: Option<&SharedPrints>) -> Vec<
             muted()
         }));
         if t.simulated {
-            simulated(ui);
+            simulated(ui, "data");
         }
         note(ui, "On-chain trades: click a row to open the aggressor's wallet.");
     });
@@ -983,8 +954,12 @@ fn prints(ui: &mut Ui, pp: &mut PrintsPane, tape: Option<&SharedPrints>) -> Vec<
                         ((if x.buy { "BUY" } else { "SELL" }).into(), c, false),
                         (fmt_price(x.price), text(), true),
                         (fmt_usd(x.usd), if x.usd >= 1e6 { c } else { text() }, true),
-                        (short_address(&x.taker), text(), true),
-                        (short_address(&x.maker), muted(), true),
+                        (
+                            labels.display(&x.taker),
+                            if labels.label(&x.taker).is_some() { amber() } else { text() },
+                            true,
+                        ),
+                        (labels.display(&x.maker), muted(), true),
                     ],
                     false,
                 );
@@ -1067,7 +1042,7 @@ fn option_flow(ui: &mut Ui, o: &mut OptionFlowPane, tape: Option<&SharedOptionFl
     drop(t);
     ui.horizontal_wrapped(|ui| {
         if sim {
-            simulated(ui);
+            simulated(ui, "data");
         }
         if let Some(e) = err {
             ui.label(RichText::new("Deribit offline").font(ui_font(11.0)).color(theme::down())).on_hover_text(e);

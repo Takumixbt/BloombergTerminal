@@ -20,7 +20,7 @@ use crate::widgets::{self, Icon};
 use crate::worker::{Request, Worker};
 
 /// Panels offered by the + menus: label and command word.
-pub const PANELS: [(&str, &str); 24] = [
+pub const PANELS: [(&str, &str); 30] = [
     ("Chart", "CHART"),
     ("Watchlist", "WL"),
     ("News", "NEWS"),
@@ -43,6 +43,12 @@ pub const PANELS: [(&str, &str); 24] = [
     ("HL Positioning", "HLPOS"),
     ("Whale Prints", "PRINTS"),
     ("Options Flow", "OFLOW"),
+    ("Market", "MKT"),
+    ("News Wire", "WIRE"),
+    ("KOL Calls", "CALLS"),
+    ("Hyperliquid Eco", "HLECO"),
+    ("Seasonality", "SEASON"),
+    ("Crypto Alerts", "CALRT"),
     ("Settings", "PREFS"),
     ("Help", "HELP"),
 ];
@@ -522,6 +528,14 @@ impl TerminalApp {
             PaneKind::Prints(p) if p.coin.is_some() && hd_data::security(&key).class == hd_core::AssetClass::Crypto => {
                 p.coin = Some(hd_flow::venue::coin_of_key(&key));
             }
+            PaneKind::Season(s) if hd_data::security(&key).class == hd_core::AssetClass::Crypto => {
+                let coin = hd_flow::venue::coin_of_key(&key);
+                if s.coin != coin {
+                    s.coin = coin;
+                    s.data = None;
+                    s.fetched = None;
+                }
+            }
             _ => return false,
         }
         true
@@ -761,6 +775,20 @@ impl TerminalApp {
             }
             "PRINTS" | "WHALEPRINTS" => PaneKind::prints(words.get(1).map(|w| w.to_string()), 0.0),
             "OFLOW" | "OPTFLOW" => PaneKind::option_flow(words.get(1).map(|w| w.to_string())),
+            "WIRE" | "CNEWS" => PaneKind::wire(words.get(1).map(|w| w.to_string())),
+            "CALLS" | "KOL" => PaneKind::Kol(Box::new(super::market_view::KolPane::new(Vec::new()))),
+            "HLECO" | "ECO" => PaneKind::Eco,
+            "MKT" | "MARKET" => PaneKind::Market(Box::new(super::market_view::MarketPane {
+                view: super::MarketView::Table,
+                window: 2,
+                sort_desc: true,
+            })),
+            "SEASON" | "SEASONALITY" => {
+                PaneKind::season(&words.get(1).map_or_else(|| self.focused_coin(), |w| w.to_string()))
+            }
+            "CALRT" => {
+                PaneKind::CryptoAlerts(Box::new(super::market_view::AlertsPane { input: String::new(), error: None }))
+            }
             "PRED" | "PREDICT" | "POLY" | "POLYMARKET" => {
                 PaneKind::Predict(Box::new(super::flow_view::PredPane::new(&words[1..].join(" "))))
             }

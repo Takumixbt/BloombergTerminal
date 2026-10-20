@@ -581,6 +581,186 @@ pub async fn run_option_flow(tape: Arc<std::sync::Mutex<crate::options_flow::Tap
     }
 }
 
+// ---- News, KOL calls, ecosystem, market dashboard ----------------------------------
+
+pub fn news(now: i64) -> Vec<crate::news::Headline> {
+    let heads = [
+        ("CoinDesk", "Bitcoin climbs past $67K as spot ETF inflows hit two-week high"),
+        ("The Block", "Hyperliquid HIP-3 markets top $1B in open interest as builders add equities"),
+        ("Federal Reserve", "FOMC statement: Committee holds the target range, signals patience on cuts"),
+        ("Decrypt", "DeFi lending protocol drained of $12M in oracle exploit"),
+        ("Cointelegraph", "SEC delays decision on Solana ETF applications"),
+        ("Blockworks", "Ethena raises $100M at a $3B valuation"),
+        ("CoinDesk", "Ether options traders pile into December $3,000 calls"),
+        ("The Block", "Binance to list two new perpetual contracts with up to 50x leverage"),
+        ("CryptoSlate", "XRP open interest falls 12% as funding flips negative"),
+        ("Bitcoin Magazine", "Miners send 15,000 BTC to exchanges in a week"),
+        ("Hyperliquid", "HyperEVM upgrade lowers gas and adds new precompiles"),
+        ("SEC", "SEC charges promoters of unregistered crypto offering"),
+        ("Decrypt", "Dogecoin jumps 9% as meme coins rally"),
+        ("CoinDesk", "Stablecoin supply reaches a record $310B"),
+    ];
+    let uni: std::collections::HashSet<String> = COINS.iter().map(|c| c.0.to_string()).collect();
+    heads
+        .iter()
+        .enumerate()
+        .map(|(k, (src, t))| crate::news::Headline {
+            title: (*t).into(),
+            source: (*src).into(),
+            link: format!("https://example.invalid/news/{k}"),
+            ts: now - k as i64 * 1_740,
+            coins: crate::news::coins_in(t, &uni),
+            tags: crate::news::classify(t),
+        })
+        .collect()
+}
+
+pub fn kol_posts(now: i64) -> Vec<crate::kol::Post> {
+    let posts = [
+        ("sample_trader", "Longed $BTC at 66.8k, invalidation 65.9k, targets 69k / 72k"),
+        ("perp_wizard", "Shorting $SOL into resistance 158, stop 162"),
+        ("hype_maxi", "Bought more $HYPE here, bullish into the HIP-3 catalyst"),
+        ("macro_mike", "Fading this $ETH pump, bearish below 2.6k"),
+        ("degen_dan", "$DOGE send it, longing 0.118"),
+        ("sample_trader", "Took profit on BTC, flat now"),
+        ("perp_wizard", "Long $LINK 11.2, target 13"),
+        ("chart_nun", "$XRP looks heavy, shorting the retest of 0.55"),
+    ];
+    posts
+        .iter()
+        .enumerate()
+        .map(|(k, (h, t))| crate::kol::Post {
+            id: format!("sim-{k}"),
+            handle: (*h).into(),
+            text: (*t).into(),
+            ts: now - k as i64 * 5_400,
+            url: format!("https://x.com/{h}"),
+        })
+        .collect()
+}
+
+pub fn eco(now: i64) -> crate::hl_eco::Eco {
+    use crate::hl_eco::{Dex, Eco, Market, Revenue, SpotToken};
+    let mut r = Rng::new(17);
+    let core_markets: Vec<Market> = COINS
+        .iter()
+        .map(|(c, px, oi)| Market {
+            name: (*c).into(),
+            price: *px,
+            change_24h: Some(r.n() * 0.03),
+            volume_usd: oi * 1e9 * 0.18 * (1.0 + r.f()),
+            oi_usd: oi * 1e9 * 0.18,
+            funding: Some(0.0000125 + r.n() * 0.00001),
+        })
+        .collect();
+    let dex = |name: &str, full: &str, tick: &[(&str, f64)], r: &mut Rng| Dex {
+        name: name.into(),
+        full_name: full.into(),
+        deployer: fake_address(r),
+        markets: tick
+            .iter()
+            .map(|(t, px)| Market {
+                name: format!("{name}:{t}"),
+                price: *px,
+                change_24h: Some(r.n() * 0.02),
+                volume_usd: 5e6 * (1.0 + 10.0 * r.f()),
+                oi_usd: 2e6 * (1.0 + 30.0 * r.f()),
+                funding: Some(0.00001),
+            })
+            .collect(),
+    };
+    let hip3 = vec![
+        dex("xyz", "XYZ Equities", &[("TSLA", 251.0), ("NVDA", 182.0), ("AAPL", 247.0), ("SPX", 6_650.0)], &mut r),
+        dex("flx", "Felix Markets", &[("GOLD", 4_050.0), ("SILVER", 48.0), ("OIL", 61.0)], &mut r),
+        dex("vntl", "Ventuals", &[("SPACEX", 420.0), ("OPENAI", 650.0)], &mut r),
+    ];
+    let spot = [
+        ("HYPE", 24.5, 3.3e8),
+        ("PURR", 0.21, 6e8),
+        ("UBTC", 67_000.0, 4_200.0),
+        ("UETH", 2_560.0, 52_000.0),
+        ("FEUSD", 1.0, 9e7),
+        ("HFUN", 18.0, 8e5),
+    ]
+    .iter()
+    .map(|(n, p, sup)| SpotToken {
+        name: (*n).into(),
+        price: *p,
+        change_24h: Some(r.n() * 0.04),
+        volume_usd: p * sup * 0.01,
+        market_cap: p * sup,
+    })
+    .collect::<Vec<_>>();
+    let mut spot = spot;
+    spot.sort_by(|a, b| b.market_cap.total_cmp(&a.market_cap));
+    let series = |base: f64, r: &mut Rng| -> Revenue {
+        let daily: Vec<(i64, f64)> =
+            (0..120).map(|d| ((now / 86_400 - 119 + d) * 86_400, base * (0.7 + 0.6 * r.f()))).collect();
+        let sum = |n: usize| daily.iter().rev().take(n).map(|x| x.1).sum::<f64>();
+        Revenue { total_24h: Some(sum(1)), total_7d: Some(sum(7)), total_30d: Some(sum(30)), daily }
+    };
+    let fees = series(2.4e6, &mut r);
+    let revenue = series(2.1e6, &mut r);
+    Eco {
+        core: Dex {
+            name: String::new(),
+            full_name: "Hyperliquid".into(),
+            deployer: String::new(),
+            markets: core_markets,
+        },
+        hip3,
+        spot,
+        hlp: vaults().into_iter().next(),
+        fees: Some(fees),
+        revenue: Some(revenue),
+        errors: Vec::new(),
+        updated: now,
+        simulated: true,
+    }
+}
+
+fn sample_bars(coin: &str, n: usize, now: i64) -> Vec<crate::market::Bar> {
+    let mut r = Rng::new(seed(coin) ^ 23);
+    let px = COINS.iter().find(|c| c.0 == coin).map_or(1.0, |c| c.1);
+    let drift = r.n() * 0.0004;
+    let mut p = px / (1.0 + drift).powi(n as i32);
+    let start = (now / 3600 - n as i64) * 3600;
+    (0..n)
+        .map(|i| {
+            let ts = start + i as i64 * 3600;
+            let hour = (ts / 3600) % 24;
+            // A mild US-session bias so seasonality shows structure.
+            let bias = if (13..21).contains(&hour) { 0.0006 } else { -0.0002 };
+            let o = p;
+            p *= 1.0 + drift + bias + r.n() * 0.004;
+            let v = px * 1e4 * (1.0 + r.f());
+            crate::market::Bar {
+                ts,
+                open: o,
+                close: p,
+                volume: v,
+                taker_buy: v * (0.5 + (p / o - 1.0) * 20.0).clamp(0.3, 0.7),
+            }
+        })
+        .collect()
+}
+
+pub fn market(now: i64) -> crate::market::Dashboard {
+    let rows = COINS
+        .iter()
+        .filter_map(|(c, _, _)| crate::market::row_from_bars(c, &sample_bars(c, 744, now)))
+        .collect::<Vec<_>>();
+    let mut d = crate::market::Dashboard { rows, updated: now, simulated: true, errors: 0 };
+    crate::market::join_board(&mut d.rows, &board(now));
+    d
+}
+
+pub fn seasonality(coin: &str, now: i64) -> crate::market::Seasonality {
+    let mut s = crate::market::seasonality(coin, &sample_bars(coin, 3_000, now));
+    s.simulated = true;
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -617,5 +797,16 @@ mod tests {
             ot[0].instrument
         );
         assert!(!vaults().is_empty() && !fills(&wallets[0], 0).is_empty());
+        assert!(news(1_760_936_400).iter().any(|h| h.important()));
+        let uni: std::collections::HashSet<String> = COINS.iter().map(|c| c.0.to_string()).collect();
+        let calls: Vec<_> = kol_posts(0).iter().flat_map(|p| crate::kol::calls_in(p, &uni)).collect();
+        assert!(calls.len() >= 6, "{}", calls.len());
+        let e = eco(1_760_936_400);
+        assert!(e.hype().is_some() && e.hip3.len() == 3 && e.spot[0].name == "HYPE");
+        let m = market(1_760_936_400);
+        assert_eq!(m.rows.len(), COINS.len());
+        assert!(m.rows.iter().all(|r| r.returns.iter().all(Option::is_some) && r.oi_usd > 0.0));
+        let s = seasonality("BTC", 1_760_936_400);
+        assert!(s.sessions[2].1 > s.sessions[0].1, "US-session bias shows");
     }
 }

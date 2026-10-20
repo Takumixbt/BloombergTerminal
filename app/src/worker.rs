@@ -1053,4 +1053,43 @@ mod tests {
         assert!(matches!(&got[3], FlowResponse::Prints(_)));
         assert!(matches!(&got[4], FlowResponse::OptionFlow(_)));
     }
+
+    #[test]
+    fn market_requests_answer_offline() {
+        let (out, rx) = mpsc::channel();
+        let s = Shared {
+            provider: std::sync::Arc::new(hd_data::sample::SampleProvider::at(0, 10)),
+            series: Default::default(),
+            cache: std::sync::Mutex::new(None),
+            db: Mutex::new(Db::open_in_memory().unwrap()),
+            out,
+            ctx: egui::Context::default(),
+            flow: Default::default(),
+        };
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        rt.block_on(async {
+            for r in [
+                FlowRequest::Wire,
+                FlowRequest::Kol { sources: Vec::new() },
+                FlowRequest::Eco,
+                FlowRequest::Market,
+                FlowRequest::Season { pane: 9, coin: "ETH".into() },
+            ] {
+                flow::handle(&s, r).await;
+            }
+        });
+        let got: Vec<FlowResponse> = rx
+            .try_iter()
+            .map(|r| match r {
+                Response::Flow(f) => *f,
+                _ => panic!("unexpected response"),
+            })
+            .collect();
+        assert_eq!(got.len(), 5);
+        assert!(matches!(&got[0], FlowResponse::Wire(w) if !w.lock().unwrap().items.is_empty()));
+        assert!(matches!(&got[1], FlowResponse::Kol { calls, .. } if !calls.is_empty()));
+        assert!(matches!(&got[2], FlowResponse::Eco(Ok(e)) if e.simulated && !e.hip3.is_empty()));
+        assert!(matches!(&got[3], FlowResponse::Market(Ok(m)) if !m.rows.is_empty()));
+        assert!(matches!(&got[4], FlowResponse::Season { pane: 9, season: Ok(_), .. }));
+    }
 }

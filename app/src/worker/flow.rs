@@ -30,6 +30,9 @@ const POSITIONING_TTL: Duration = Duration::from_secs(180);
 pub const SCAN_WALLETS: usize = 200;
 
 pub type SharedPrints = hd_flow::prints::SharedTape;
+pub type SharedWire = Arc<Mutex<hd_flow::news::Wire>>;
+/// Cached snapshot with the time it was fetched.
+type Cached<T> = Mutex<Option<(Instant, Arc<T>)>>;
 /// When the leaderboard was fetched, the leaders and the vaults.
 type CachedLeaders = (Instant, Arc<Vec<Leader>>, Vec<Vault>);
 pub type SharedOptionFlow = Arc<Mutex<hd_flow::options_flow::Tape>>;
@@ -70,6 +73,21 @@ pub enum FlowRequest {
     Prints,
     /// The shared Deribit options-flow tape.
     OptionFlow,
+    /// The shared news wire (polled every 90 s while held).
+    Wire,
+    /// Posts from these KOLs, turned into calls and added to the saved call book.
+    Kol {
+        sources: Vec<hd_flow::kol::KolSource>,
+    },
+    /// Hyperliquid ecosystem snapshot (cached).
+    Eco,
+    /// Market dashboard: returns, CVD, OI and funding for the top coins (cached).
+    Market,
+    /// Seasonality for one coin.
+    Season {
+        pane: PaneId,
+        coin: String,
+    },
 }
 
 pub enum FlowResponse {
@@ -84,6 +102,11 @@ pub enum FlowResponse {
     Positioning(Result<Arc<Positioning>, String>),
     Prints(SharedPrints),
     OptionFlow(SharedOptionFlow),
+    Wire(SharedWire),
+    Kol { calls: Vec<hd_flow::kol::Call>, errors: Vec<String>, token: bool },
+    Eco(Result<Arc<hd_flow::hl_eco::Eco>, String>),
+    Market(Result<Arc<hd_flow::market::Dashboard>, String>),
+    Season { pane: PaneId, coin: String, season: Result<Box<hd_flow::market::Seasonality>, String> },
 }
 
 #[derive(Default)]
@@ -95,6 +118,11 @@ pub struct FlowShared {
     positioning: Mutex<Option<(Instant, Arc<Positioning>)>>,
     prints: Mutex<Weak<Mutex<hd_flow::prints::Tape>>>,
     oflow: Mutex<Weak<Mutex<hd_flow::options_flow::Tape>>>,
+    wire: Mutex<Weak<Mutex<hd_flow::news::Wire>>>,
+    eco: Cached<hd_flow::hl_eco::Eco>,
+    market: Cached<hd_flow::market::Dashboard>,
+    /// Serialises updates of the saved KOL call book.
+    kol: tokio::sync::Mutex<()>,
 }
 
 /// Hand out the shared stream behind `slot`, starting it with `start` if nobody holds it.
@@ -342,6 +370,152 @@ pub(super) async fn handle(s: &Shared, req: FlowRequest) {
             });
             send(FlowResponse::OptionFlow(tape));
         }
+        FlowRequest::Wire => {
+            let client = if offline { None } else { s.flow.client().ok() };
+            let universe = coin_universe(s);
+            let tape = shared_stream(&s.flow.wire, |t| {
+                if let Ok(mut w) = t.lock()
+                    && offline
+                {
+                    w.simulated = true;
+                    w.merge(sample::news(now()));
+                }
+                if let Some(c) = client {
+                    tokio::spawn(run_wire(t, c.http().clone(), universe));
+                }
+            });
+            send(FlowResponse::Wire(tape));
+        }
+        FlowRequest::Kol { sources } => {
+            let _guard = s.flow.kol.lock().await;
+            let path = super::data_dir().join("kol_calls.json");
+            let mut book = hd_flow::kol::Book::load(&path);
+            let universe = coin_universe(s);
+            let token = std::env::var("X_BEARER_TOKEN").or_else(|_| std::env::var("HD_X_BEARER_TOKEN")).ok();
+            let (posts, errors) = if offline {
+                (sample::kol_posts(now()), Vec::new())
+            } else {
+                match s.flow.client() {
+                    Ok(c) => hd_flow::kol::fetch(c.http(), token.as_deref(), &sources).await,
+                    Err(e) => (Vec::new(), vec![e]),
+                }
+            };
+            let handles: Vec<String> =
+                sources.iter().map(|k| k.handle.trim_start_matches('@').to_ascii_lowercase()).collect();
+            let calls: Vec<_> = posts
+                .iter()
+                .filter(|p| offline || handles.contains(&p.handle.to_ascii_lowercase()))
+                .flat_map(|p| hd_flow::kol::calls_in(p, &universe))
+                .collect();
+            let board = s.flow.board.lock().ok().and_then(|b| b.clone()).map(|(_, b)| b);
+            let board = board.or_else(|| offline.then(|| Arc::new(sample::board(now()))));
+            let price = |c: &str| {
+                let p = board.as_ref().and_then(|b| b.row(c)).map(|r| r.price)?;
+                // Offline, calls are dated hours ago: price them a little away from now.
+                let drift =
+                    if offline { (c.bytes().map(u64::from).sum::<u64>() % 7) as f64 * 0.006 - 0.018 } else { 0.0 };
+                Some(p * (1.0 + drift))
+            };
+            if book.add(calls, price) > 0
+                && !offline
+                && let Err(e) = book.save(&path)
+            {
+                tracing::warn!("saving KOL calls: {e:#}");
+            }
+            let mut calls = book.calls;
+            if !offline {
+                calls.retain(|c| handles.contains(&c.post.handle.to_ascii_lowercase()));
+            }
+            send(FlowResponse::Kol { calls, errors, token: token.is_some() });
+        }
+        FlowRequest::Eco => {
+            let cached =
+                s.flow.eco.lock().ok().and_then(|e| e.clone()).filter(|(t, _)| t.elapsed() < Duration::from_secs(120));
+            let r = match cached {
+                Some((_, e)) => Ok(e),
+                None => {
+                    let eco = if offline {
+                        sample::eco(now())
+                    } else {
+                        match s.flow.client() {
+                            Ok(c) => {
+                                let vaults = leaders(s, false).await.1;
+                                hd_flow::hl_eco::fetch(c.http(), &vaults).await
+                            }
+                            Err(e) => return send(FlowResponse::Eco(Err(e))),
+                        }
+                    };
+                    let eco = Arc::new(eco);
+                    if let Ok(mut slot) = s.flow.eco.lock() {
+                        *slot = Some((Instant::now(), eco.clone()));
+                    }
+                    Ok(eco)
+                }
+            };
+            send(FlowResponse::Eco(r));
+        }
+        FlowRequest::Market => {
+            let cached = s
+                .flow
+                .market
+                .lock()
+                .ok()
+                .and_then(|e| e.clone())
+                .filter(|(t, _)| t.elapsed() < Duration::from_secs(300));
+            let r = match cached {
+                Some((_, d)) => Ok(d),
+                None => {
+                    let d = if offline {
+                        sample::market(now())
+                    } else {
+                        let c = match s.flow.client() {
+                            Ok(c) => c,
+                            Err(e) => return send(FlowResponse::Market(Err(e))),
+                        };
+                        let board = match s.flow.board.lock().ok().and_then(|b| b.clone()) {
+                            Some((_, b)) => b,
+                            None => {
+                                let b = Arc::new(c.board(BOARD_DETAIL).await);
+                                if let Ok(mut slot) = s.flow.board.lock() {
+                                    *slot = Some((Instant::now(), b.clone()));
+                                }
+                                b
+                            }
+                        };
+                        let coins: Vec<String> = board
+                            .rows
+                            .iter()
+                            .filter(|r| r.venue(Exchange::Binance).is_some())
+                            .take(40)
+                            .map(|r| r.coin.clone())
+                            .collect();
+                        let mut d = hd_flow::market::dashboard(c.http(), &coins).await;
+                        hd_flow::market::join_board(&mut d.rows, &board);
+                        d
+                    };
+                    let d = Arc::new(d);
+                    if let Ok(mut slot) = s.flow.market.lock() {
+                        *slot = Some((Instant::now(), d.clone()));
+                    }
+                    Ok(d)
+                }
+            };
+            send(FlowResponse::Market(r));
+        }
+        FlowRequest::Season { pane, coin } => {
+            let season = if offline {
+                Ok(Box::new(sample::seasonality(&coin, now())))
+            } else {
+                match s.flow.client() {
+                    Ok(c) => hd_flow::market::seasonality_for(c.http(), &coin)
+                        .await
+                        .map(Box::new)
+                        .map_err(|e| format!("{e:#}")),
+                    Err(e) => Err(e),
+                }
+            };
+            send(FlowResponse::Season { pane, coin, season });
+        }
         FlowRequest::MarketDetail { pane, market } => {
             let detail = if offline {
                 sample::detail(&market, now())
@@ -385,5 +559,41 @@ async fn leaders(s: &Shared, offline: bool) -> (Result<Arc<Vec<Leader>>, String>
             (Ok(l), vaults)
         }
         Err(e) => (Err(e), vaults),
+    }
+}
+
+/// Coins known to the board (or the common ones), for tagging headlines and calls.
+fn coin_universe(s: &Shared) -> std::collections::HashSet<String> {
+    let board = s.flow.board.lock().ok().and_then(|b| b.clone()).map(|(_, b)| b);
+    let mut u: std::collections::HashSet<String> =
+        board.map(|b| b.rows.iter().map(|r| r.coin.clone()).collect()).unwrap_or_default();
+    for c in
+        ["BTC", "ETH", "SOL", "XRP", "DOGE", "HYPE", "BNB", "SUI", "LINK", "AVAX", "ADA", "PEPE", "TON", "LTC", "ENA"]
+    {
+        u.insert(c.to_string());
+    }
+    u
+}
+
+/// Poll every news feed into `wire` every 90 s until nobody else holds it.
+async fn run_wire(wire: SharedWire, http: hd_flow::Http, universe: std::collections::HashSet<String>) {
+    let feeds = hd_flow::news::load_feeds(&super::data_dir().join("news_feeds.json"));
+    while Arc::strong_count(&wire) > 1 {
+        let results = hd_flow::news::fetch_all(&http, &feeds, &universe).await;
+        if let Ok(mut w) = wire.lock() {
+            for (name, r) in results {
+                match r {
+                    Ok(items) => {
+                        let n = items.len();
+                        w.merge(items);
+                        w.status.insert(name, Ok(n));
+                    }
+                    Err(e) => {
+                        w.status.insert(name, Err(e));
+                    }
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_secs(90)).await;
     }
 }
