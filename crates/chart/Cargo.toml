@@ -1,0 +1,21 @@
+[package]
+name = "tr-chart"
+description = "GPU chart rendering (wgpu) with LOD pyramids, viewport math and egui integration"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tr-core.workspace = true
+egui = "0.36"
+egui-wgpu = "0.36"
+bytemuck = { version = "1", features = ["derive"] }
+chrono.workspace = true
+serde.workspace = true
+pollster = "0.4"
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "frame"
+harness = false

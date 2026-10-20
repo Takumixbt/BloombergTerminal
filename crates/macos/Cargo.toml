@@ -1,0 +1,26 @@
+[package]
+name = "tr-macos"
+description = "macOS window chrome for terminal-rs: unified toolbar, vibrancy, accent colour"
+version.workspace = true
+edition.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSGeometry", "NSObject"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
+    "NSToolbar",
+    "NSVisualEffectView",
+    "NSColor",
+    "NSColorSpace",
+    "NSGraphics",
+    "NSAppearance",
+    "NSButton",
+    "NSControl",
+    "NSWorkspace",
+    "NSAccessibility",
+    "objc2-core-foundation",
+] }

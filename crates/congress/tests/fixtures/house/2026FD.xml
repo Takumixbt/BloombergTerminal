@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<FinancialDisclosure>
+<Member>
+    <Prefix />
+    <Last>Aaron</Last>
+    <First>Richard</First>
+    <Suffix />
+    <FilingType>W</FilingType>
+    <StateDst>MI04</StateDst>
+    <Year>2026</Year>
+    <FilingDate>4/15/2026</FilingDate>
+    <DocID>8068</DocID>
+  </Member>
+<Member>
+    <Prefix>Hon.</Prefix>
+    <Last>Alford</Last>
+    <First>Mark</First>
+    <Suffix />
+    <FilingType>P</FilingType>
+    <StateDst>MO04</StateDst>
+    <Year>2026</Year>
+    <FilingDate>3/31/2026</FilingDate>
+    <DocID>20034201</DocID>
+  </Member>
+<Member>
+    <Prefix>Hon.</Prefix>
+    <Last>Allen</Last>
+    <First>Richard W.</First>
+    <Suffix />
+    <FilingType>P</FilingType>
+    <StateDst>GA12</StateDst>
+    <Year>2026</Year>
+    <FilingDate>1/15/2026</FilingDate>
+    <DocID>20033751</DocID>
+  </Member>
+<Member>
+    <Prefix>Hon.</Prefix>
+    <Last>Fleischmann</Last>
+    <First>Charles J. "Chuck"</First>
+    <Suffix />
+    <FilingType>P</FilingType>
+    <StateDst>TN03</StateDst>
+    <Year>2026</Year>
+    <FilingDate>2/9/2026</FilingDate>
+    <DocID>8221321</DocID>
+  </Member>
+</FinancialDisclosure>

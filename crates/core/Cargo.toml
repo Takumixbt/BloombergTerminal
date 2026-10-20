@@ -1,0 +1,17 @@
+[package]
+name = "tr-core"
+description = "Core market types, timeframes, indicators and sample data for terminal-rs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chrono.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+serde_json.workspace = true
+
+[[bench]]
+name = "indicators"
+harness = false

@@ -1,0 +1,98 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            arch: arm64
+          - os: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (release)
+        run: cargo build --release --workspace --all-targets
+      - name: Test
+        run: cargo test --release --workspace
+      - name: Clippy
+        run: cargo clippy --release --workspace --all-targets -- -D warnings
+      - name: Frame benchmark (Metal if available)
+        run: cargo run --release -p tr-chart --example framebench 200000 || echo "no GPU adapter on this runner"
+      - name: Run the app (smoke test, offline sample data)
+        env:
+          TR_PROVIDER: sample
+          TR_CONGRESS_REFRESH_MIN: "0"
+          TR_SMOKE_SECS: "8"
+          TR_DATA_DIR: ${{ runner.temp }}/terminal-rs
+        run: |
+          ./target/release/terminal-rs > smoke.log 2>&1 &
+          pid=$!
+          sleep 6
+          screencapture -x screenshot-${{ matrix.arch }}.png || true
+          wait $pid
+          status=$?
+          cat smoke.log
+          grep -q "window + GPU ready" smoke.log
+          grep -q "smoke:" smoke.log
+          exit $status
+      - name: Run the app against live sources
+        env:
+          TR_SMOKE_SECS: "12"
+          TR_CONGRESS_REFRESH_MIN: "0"
+          TR_DATA_DIR: ${{ runner.temp }}/terminal-rs-live
+        run: |
+          ./target/release/terminal-rs > live.log 2>&1 &
+          pid=$!
+          sleep 10
+          screencapture -x screenshot-live-${{ matrix.arch }}.png || true
+          wait $pid
+          cat live.log
+          grep -q "smoke:" live.log
+      - name: Bundle .app
+        run: ./scripts/bundle-macos.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-${{ matrix.arch }}
+          path: |
+            screenshot-*.png
+            smoke.log
+            live.log
+            target/release/Terminal.app
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y libxkbcommon-x11-0 libxcb-xkb1 mesa-vulkan-drivers xvfb
+      - run: cargo fmt --all -- --check
+      - run: cargo build --release --workspace --all-targets
+      - run: cargo test --release --workspace
+      - run: cargo clippy --release --workspace --all-targets -- -D warnings
+      - name: Run the app (smoke test)
+        env:
+          TR_PROVIDER: sample
+          TR_CONGRESS_REFRESH_MIN: "0"
+          TR_SMOKE_SECS: "6"
+        run: xvfb-run -a ./target/release/terminal-rs 2>&1 | tee smoke.log && grep -q "smoke:" smoke.log

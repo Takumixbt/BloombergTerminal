@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:wfw="http://wellformedweb.org/CommentAPI/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:sy="http://purl.org/rss/1.0/modules/syndication/" xmlns:slash="http://purl.org/rss/1.0/modules/slash/" xmlns:media="http://search.yahoo.com/mrss/" version="2.0">
+  <channel>
+    <title>CoinDesk: Bitcoin, Ethereum, Crypto News and Price Data</title>
+    <link>https://www.coindesk.com/</link>
+    <atom:link rel="self" type="application/rss+xml" href="https://www.coindesk.com/arc/outboundfeeds/rss"/>
+    <atom:link rel="hub" href="true"/>
+    <description>Leader in cryptocurrency, Bitcoin, Ethereum, XRP, blockchain, DeFi, digital finance and Web 3.0 news with analysis, video and live price updates.</description>
+    <lastBuildDate>Mon, 12 Oct 2026 13:24:35 +0000</lastBuildDate>
+    <language>en-US</language>
+    <copyright>© 2026 CoinDesk, Inc.</copyright>
+    <generator>CoinDesk</generator>
+    <ttl>5</ttl>
+    <sy:updatePeriod>hourly</sy:updatePeriod>
+    <sy:updateFrequency>1</sy:updateFrequency>
+    <image>
+      <url>https://downloads.coindesk.com/arc/failsafe/feeds/coindesk-feed-logo.png</url>
+      <title>CoinDesk: Bitcoin, Ethereum, Crypto News and Price Data</title>
+      <link>https://www.coindesk.com/</link>
+    </image>
+    <item>
+      <title><![CDATA[Standard Chartered offers RLUSD custody in Dubai and plans LMAX collateral link]]></title>
+      <link>https://www.coindesk.com/business/2026/10/12/standard-chartered-offers-rlusd-custody-in-dubai-and-plans-lmax-collateral-link</link>
+      <media:content url="https://cdn.sanity.io/images/s3y3vcno/production/635098a63fd9f1666a72fdfb7fee8ca9adedf6a2-4032x2268.jpg?fm=jpg&amp;w=800&amp;h=450&amp;crop=focalpoint&amp;fit=clip" type="image/*" medium="image"/>
+      <guid isPermaLink="false">113bb0e7-dc00-45b1-b637-b6bfdce226f4</guid>
+      <pubDate>Mon, 12 Oct 2026 12:09:09 +0000</pubDate>
+      <description><![CDATA[Ripple previously gave LMAX $150 million in financing to integrate RLUSD into its institutional infrastructure.]]></description>
+      <dc:creator>Olivier Acuna</dc:creator>
+      <content:encoded/>
+      <dc:description/>
+      <category domain="https://www.coindesk.com/business"><![CDATA[Finance]]></category>
+      <category domain="tag"><![CDATA[Standard chartered]]></category>
+      <category domain="tag"><![CDATA[Custody]]></category>
+      <category domain="tag"><![CDATA[Ripple]]></category>
+      <category domain="https://www.coindesk.com/">News</category>
+    </item>
+    <item>
+      <title><![CDATA[Ledger claims CryptoBilis cases are limited as up to $93M is traced, $10M frozen]]></title>
+      <link>https://www.coindesk.com/tech/2026/10/12/ledger-claims-cryptobilis-cases-are-limited-as-up-to-usd93m-is-traced-usd10m-frozen</link>
+      <media:content url="https://cdn.sanity.io/images/s3y3vcno/production/e7658d2f8e815fd276766cb37fe078dcc61768ff-1740x979.jpg?fm=jpg&amp;w=800&amp;h=450&amp;crop=focalpoint&amp;fit=clip" type="image/*" medium="image"/>
+      <guid isPermaLink="false">ea242ada-57de-47a4-b074-5019e00c763c</guid>
+      <pubDate>Mon, 12 Oct 2026 12:01:53 +0000</pubDate>
+      <description><![CDATA[Ledger said every confirmed case involves devices sold by the Southeast Asian reseller, but critics say the hardware-wallet maker must answer for an authorized sales channel.]]></description>
+      <dc:creator>Olivier Acuna</dc:creator>
+      <content:encoded/>
+      <dc:description/>
+      <category domain="https://www.coindesk.com/tech"><![CDATA[Tech]]></category>
+      <category domain="tag"><![CDATA[Hack]]></category>
+      <category domain="https://www.coindesk.com/">News</category>
+    </item>
+    <item>
+      <title><![CDATA[Bitcoin falls below $83,000 as dollar strength keeps markets on edge]]></title>
+      <link>https://www.coindesk.com/markets/2026/10/12/bitcoin-holds-usd83-000-as-dollar-strength-keeps-markets-on-edge</link>
+      <media:content url="https://cdn.sanity.io/images/s3y3vcno/production/3ba4d66673c79623624c737b9613317271fc97dc-1202x748.png?fm=jpg&amp;w=800&amp;h=450&amp;crop=focalpoint&amp;fit=clip" type="image/*" medium="image"/>
+      <guid isPermaLink="false">1cdf8919-b024-4214-96dc-285c2b12431a</guid>
+      <pubDate>Mon, 12 Oct 2026 11:21:11 +0000</pubDate>
+      <description><![CDATA[Bitcoin and gold hold steady as a firm dollar and rising bond yields weigh on sentiment, while IREN secures a multiyear cloud services deal with Anthropic.]]></description>
+      <dc:creator>James Van Straten</dc:creator>
+      <content:encoded/>
+      <dc:description/>
+      <category domain="https://www.coindesk.com/markets"><![CDATA[Markets]]></category>
+      <category domain="tag"><![CDATA[Live News]]></category>
+      <category domain="https://www.coindesk.com/">live_news</category>
+    </item>
+    <item>
+      <title><![CDATA[Global financial watchdog calls for cross-border information sharing, planning for stablecoin crisis]]></title>
+      <link>https://www.coindesk.com/policy/2026/10/12/global-financial-watchdog-calls-for-cross-border-information-sharing-planning-for-stablecoin-crisis</link>
+      <media:content url="https://cdn.sanity.io/images/s3y3vcno/production/1a69f4a4dc7580b072baf69f08a84b53c0b7799e-1920x1281.jpg?fm=jpg&amp;w=800&amp;h=450&amp;crop=focalpoint&amp;fit=clip" type="image/*" medium="image"/>
+      <guid isPermaLink="false">041f3da9-9496-420b-8a3a-081ece7aff50</guid>
+      <pubDate>Mon, 12 Oct 2026 11:02:38 +0000</pubDate>
+      <description><![CDATA[Coins jointly issued by multiple companies can trap reserves in one jurisdiction while redemption demands hit another, complicating cross-border crisis response.]]></description>
+      <dc:creator>Francisco Rodrigues</dc:creator>
+      <dc:creator>AI Boost</dc:creator>
+      <content:encoded/>
+      <dc:description/>
+      <category domain="https://www.coindesk.com/policy"><![CDATA[Policy]]></category>
+      <category domain="tag"><![CDATA[Stablecoins]]></category>
+      <category domain="https://www.coindesk.com/">News</category>
+    </item>
+    <item>
+      <title><![CDATA[South Korea just got its first traditional bank loans backed by bitcoin]]></title>
+      <link>https://www.coindesk.com/business/2026/10/12/south-korea-just-got-its-first-traditional-bank-loans-backed-by-bitcoin</link>
+      <media:content url="https://cdn.sanity.io/images/s3y3vcno/production/d942a1634dad0f09e3b8e09b5f0184eaa796bc57-4240x2385.jpg?fm=jpg&amp;w=800&amp;h=450&amp;crop=focalpoint&amp;fit=clip" type="image/*" medium="image"/>
+      <guid isPermaLink="false">45fbeb61-149b-4110-b4c7-cee358f9047c</guid>
+      <pubDate>Mon, 12 Oct 2026 10:57:37 +0000</pubDate>
+      <description><![CDATA[Loans use third-party custodians for bitcoin holdings and rely on court-ordered sales if borrowers default.]]></description>
+      <dc:creator>Francisco Rodrigues</dc:creator>
+      <content:encoded/>
+      <dc:description/>
+      <category domain="https://www.coindesk.com/business"><![CDATA[Finance]]></category>
+      <category domain="tag"><![CDATA[South Korea]]></category>
+      <category domain="https://www.coindesk.com/">News</category>
+    </item></channel></rss>

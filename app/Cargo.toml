@@ -1,0 +1,28 @@
+[package]
+name = "terminal-rs"
+description = "Bloomberg-style trading terminal with GPU charts and congressional trade tracking"
+version.workspace = true
+edition.workspace = true
+default-run = "terminal-rs"
+
+[dependencies]
+tr-core.workspace = true
+tr-broker.workspace = true
+tr-congress.workspace = true
+tr-data.workspace = true
+tr-chart.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+futures = "0.3"
+egui = "0.36"
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "wayland", "x11"] }
+tr-macos.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+raw-window-handle = "0.6"

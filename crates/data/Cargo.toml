@@ -1,0 +1,24 @@
+[package]
+name = "tr-data"
+description = "Pluggable market-data providers (Alpaca, Yahoo, sample) and a SQLite bar cache"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tr-core.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+rusqlite.workspace = true
+tracing.workspace = true
+async-trait = "0.1"
+futures = "0.3"
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs", "std"] }

@@ -1,0 +1,40 @@
+//! Run one live refresh against the official sources into a SQLite file.
+//! `cargo run -p tr-congress --example ingest -- congress.sqlite3 [max_new_per_chamber]`
+use tokio::sync::Mutex;
+use tr_congress::Db;
+use tr_congress::refresh::{HttpSource, RefreshConfig, refresh};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt().with_env_filter("info,tr_congress=debug").init();
+    let mut args = std::env::args().skip(1);
+    let path = args.next().unwrap_or_else(|| "congress.sqlite3".into());
+    let db = Db::open(&path)?;
+    let mut cfg = RefreshConfig::incremental(&db);
+    if let Some(n) = args.next() {
+        cfg.max_new_per_chamber = n.parse()?;
+    }
+    let db = Mutex::new(db);
+    let report = refresh(&HttpSource::new()?, &db, &cfg).await?;
+    println!("{}", report.summary());
+    for e in report.errors.iter().take(10) {
+        println!("  error: {e}");
+    }
+    let db = db.lock().await;
+    println!("{:?}", db.stats()?);
+    for t in db.latest_trades(15)? {
+        println!(
+            "{} {:<24} {} {:<6} {:<5} {:<12} tx {} filed {} lag {}d",
+            t.chamber.as_str(),
+            t.politician,
+            t.party.code(),
+            t.ticker.as_deref().unwrap_or("-"),
+            t.tx_type.marker(),
+            t.amount.map(|a| a.to_string()).unwrap_or_default(),
+            t.tx_date,
+            t.filed_date,
+            t.disclosure_lag_days()
+        );
+    }
+    Ok(())
+}
