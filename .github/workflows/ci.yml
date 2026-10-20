@@ -77,6 +77,61 @@ jobs:
             live.log
             target/release/Terminal.app
 
+  windows:
+    name: Windows x64
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (release)
+        run: cargo build --release --workspace --all-targets
+      - name: Test
+        run: cargo test --release --workspace
+      - name: Clippy
+        run: cargo clippy --release --workspace --all-targets -- -D warnings
+      - name: Run the app (smoke test, offline sample data)
+        # Hosted runners have no GPU; wgpu needs the WARP software adapter, which is not
+        # guaranteed to be offered, so a failure here is reported but does not fail the job.
+        continue-on-error: true
+        shell: pwsh
+        env:
+          TR_PROVIDER: sample
+          TR_CONGRESS_REFRESH_MIN: "0"
+          TR_SMOKE_SECS: "8"
+          TR_LOG_FILE: ${{ runner.temp }}\smoke.log
+          TR_DATA_DIR: ${{ runner.temp }}\terminal-rs
+        run: |
+          $p = Start-Process -FilePath .\target\release\terminal-rs.exe -PassThru
+          $p | Wait-Process -Timeout 120
+          Get-Content $env:TR_LOG_FILE
+          if (-not (Select-String -Path $env:TR_LOG_FILE -Pattern "smoke:" -Quiet)) { exit 1 }
+      - name: Package (zip + installer)
+        shell: pwsh
+        run: ./scripts/package-windows.ps1 -NoBuild
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: dist/*.*
+
+  release:
+    # Push a tag like v0.2.0 to publish the Windows zip and installer as a GitHub release.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: windows
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+
   linux:
     runs-on: ubuntu-24.04
     steps:

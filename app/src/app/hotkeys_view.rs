@@ -263,6 +263,29 @@ impl TerminalApp {
                 ],
             );
 
+            section(ui, "Crypto derivatives and order flow");
+            command_table(
+                ui,
+                "help-flow",
+                &[
+                    (
+                        &["DERIV", "FUNDING", "OI"],
+                        "Funding, open interest, volume, premium, long/short: Binance, Bybit, OKX, Hyperliquid",
+                    ),
+                    (
+                        &["DERIV ETH", "SOLUSD CRNCY DERIV"],
+                        "One coin: per-venue table, OI/funding/long-short history, Deribit curve and DVOL",
+                    ),
+                    (&["LIQ", "LIQ BTC"], "Live liquidations (Binance, Bybit, OKX) with long/short totals"),
+                    (
+                        &["HEAT", "HEAT ETH HL"],
+                        "Order book heatmap with trades and CVD (Binance futures or Hyperliquid)",
+                    ),
+                    (&["FOOT", "FOOT SOL", "CVD"], "Footprint candles: buy × sell volume at price, delta, CVD"),
+                    (&["PRED", "PRED fed"], "Prediction markets (Polymarket): odds, history, order book"),
+                ],
+            );
+
             section(ui, "Brokerage (SnapTrade)");
             command_table(
                 ui,

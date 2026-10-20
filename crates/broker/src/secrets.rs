@@ -2,8 +2,9 @@
 //!
 //! The partner keys (`clientId`, `consumerKey`) and the per-user `userId`/`userSecret` are
 //! stored together as one small JSON document: in the macOS Keychain (generic password,
-//! service `terminal-rs`, account `snaptrade`), or elsewhere in an owner-only (0600) file in
-//! the app's data directory. `SNAPTRADE_*` environment variables override stored values
+//! service `terminal-rs`, account `snaptrade`), the Windows Credential Manager (generic
+//! credential `terminal-rs/snaptrade`), or elsewhere in an owner-only (0600) file in the
+//! app's data directory. `SNAPTRADE_*` environment variables override stored values
 //! field by field. Nothing is ever written inside the repository.
 
 use std::fmt;
@@ -114,12 +115,13 @@ pub struct SecretStore {
 }
 
 impl SecretStore {
-    /// The platform store: the Keychain on macOS (unless `TR_SECRET_STORE=file`), otherwise
-    /// `<data_dir>/secrets/snaptrade.json`.
+    /// The platform store: the Keychain on macOS or the Credential Manager on Windows (unless
+    /// `TR_SECRET_STORE=file`), otherwise `<data_dir>/secrets/snaptrade.json`.
     pub fn platform(data_dir: &Path) -> Self {
         let file = Backend::File(data_dir.join("secrets").join("snaptrade.json"));
         let force_file = std::env::var("TR_SECRET_STORE").is_ok_and(|v| v.eq_ignore_ascii_case("file"));
-        let backend = if cfg!(target_os = "macos") && !force_file { Backend::Keychain } else { file };
+        let os_store = cfg!(any(target_os = "macos", windows));
+        let backend = if os_store && !force_file { Backend::Keychain } else { file };
         Self { backend }
     }
 
@@ -130,6 +132,9 @@ impl SecretStore {
     /// Where credentials live, for the settings screen.
     pub fn describe(&self) -> String {
         match &self.backend {
+            Backend::Keychain if cfg!(windows) => {
+                format!("Windows Credential Manager ({KEYCHAIN_SERVICE}/{KEYCHAIN_ACCOUNT})")
+            }
             Backend::Keychain => format!("macOS Keychain ({KEYCHAIN_SERVICE} / {KEYCHAIN_ACCOUNT})"),
             Backend::File(p) => format!("{} (owner-only)", p.display()),
         }
@@ -230,7 +235,93 @@ mod keychain {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+/// The Windows Credential Manager, as a generic credential named `terminal-rs/snaptrade`
+/// (per user, persisted on this machine, not roamed).
+#[cfg(windows)]
+mod keychain {
+    use anyhow::{Result, bail};
+    use windows_sys::Win32::Foundation::{ERROR_NOT_FOUND, GetLastError};
+    use windows_sys::Win32::Security::Credentials::{
+        CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC, CREDENTIALW, CredDeleteW, CredFree, CredReadW, CredWriteW,
+    };
+
+    use super::{KEYCHAIN_ACCOUNT, KEYCHAIN_SERVICE};
+
+    /// `CRED_MAX_CREDENTIAL_BLOB_SIZE`.
+    const MAX_BLOB: usize = 5 * 512;
+
+    fn wide(s: &str) -> Vec<u16> {
+        s.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn target() -> Vec<u16> {
+        wide(&format!("{KEYCHAIN_SERVICE}/{KEYCHAIN_ACCOUNT}"))
+    }
+
+    pub fn get() -> Result<Option<String>> {
+        let target = target();
+        let mut cred: *mut CREDENTIALW = std::ptr::null_mut();
+        // SAFETY: `target` is NUL-terminated and outlives the call; on success `cred` points to
+        // a CREDENTIALW owned by the system until `CredFree`.
+        unsafe {
+            if CredReadW(target.as_ptr(), CRED_TYPE_GENERIC, 0, &mut cred) == 0 {
+                let err = GetLastError();
+                if err == ERROR_NOT_FOUND {
+                    return Ok(None);
+                }
+                bail!("reading the Windows Credential Manager failed (error {err})");
+            }
+            let c = &*cred;
+            let bytes = if c.CredentialBlob.is_null() {
+                Vec::new()
+            } else {
+                std::slice::from_raw_parts(c.CredentialBlob, c.CredentialBlobSize as usize).to_vec()
+            };
+            CredFree(cred as *const _);
+            Ok(Some(String::from_utf8(bytes).map_err(|_| anyhow::anyhow!("stored credential is not UTF-8"))?))
+        }
+    }
+
+    pub fn set(value: &str) -> Result<()> {
+        if value.len() > MAX_BLOB {
+            bail!("credentials are too large for the Windows Credential Manager");
+        }
+        let mut target = target();
+        let mut user = wide(KEYCHAIN_ACCOUNT);
+        let mut blob = value.as_bytes().to_vec();
+        // SAFETY: every pointer refers to a live, NUL-terminated (strings) or sized (blob)
+        // buffer for the duration of the call; zeroed fields are valid "absent" values.
+        unsafe {
+            let mut cred: CREDENTIALW = std::mem::zeroed();
+            cred.Type = CRED_TYPE_GENERIC;
+            cred.TargetName = target.as_mut_ptr();
+            cred.UserName = user.as_mut_ptr();
+            cred.CredentialBlobSize = blob.len() as u32;
+            cred.CredentialBlob = blob.as_mut_ptr();
+            cred.Persist = CRED_PERSIST_LOCAL_MACHINE;
+            if CredWriteW(&cred, 0) == 0 {
+                bail!("writing the Windows Credential Manager failed (error {})", GetLastError());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn delete() -> Result<()> {
+        let target = target();
+        // SAFETY: `target` is NUL-terminated and outlives the call.
+        unsafe {
+            if CredDeleteW(target.as_ptr(), CRED_TYPE_GENERIC, 0) == 0 {
+                let err = GetLastError();
+                if err != ERROR_NOT_FOUND {
+                    bail!("deleting from the Windows Credential Manager failed (error {err})");
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 mod keychain {
     use anyhow::{Result, bail};
 

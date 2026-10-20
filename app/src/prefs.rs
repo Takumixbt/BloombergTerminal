@@ -75,7 +75,7 @@ pub enum UiFont {
 /// Font for numbers, tickers and the command line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum MonoFont {
-    /// SF Mono on macOS, else the bundled monospace font.
+    /// SF Mono on macOS, Cascadia Mono or Consolas on Windows, else DejaVu or the bundled font.
     #[default]
     System,
     Menlo,
@@ -91,7 +91,7 @@ impl MonoFont {
 
     pub fn label(self) -> &'static str {
         match self {
-            MonoFont::System => "System (SF Mono)",
+            MonoFont::System => "System (SF Mono / Cascadia Mono)",
             MonoFont::Menlo => "Menlo",
             MonoFont::Monaco => "Monaco",
             MonoFont::Courier => "Courier New",
@@ -105,12 +105,15 @@ impl MonoFont {
             MonoFont::System => &[
                 "/System/Library/Fonts/SFNSMono.ttf",
                 "/System/Library/Fonts/Menlo.ttc",
+                "C:\\Windows\\Fonts\\CascadiaMono.ttf",
+                "C:\\Windows\\Fonts\\consola.ttf",
                 "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
             ],
             MonoFont::Menlo => &["/System/Library/Fonts/Menlo.ttc"],
             MonoFont::Monaco => &["/System/Library/Fonts/Monaco.ttf", "/System/Library/Fonts/Monaco.dfont"],
             MonoFont::Courier => &[
                 "/System/Library/Fonts/Supplemental/Courier New.ttf",
+                "C:\\Windows\\Fonts\\cour.ttf",
                 "/usr/share/fonts/truetype/msttcorefonts/Courier_New.ttf",
             ],
             MonoFont::Bundled => &[],

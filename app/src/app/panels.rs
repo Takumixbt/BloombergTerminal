@@ -115,9 +115,19 @@ impl TerminalApp {
                     }
                 }
             }
-            PaneKind::Watchlist | PaneKind::Settings | PaneKind::Help | PaneKind::Chart(_) => {}
+            PaneKind::Watchlist
+            | PaneKind::Settings
+            | PaneKind::Help
+            | PaneKind::Chart(_)
+            | PaneKind::Deriv(_)
+            | PaneKind::Liq(_)
+            | PaneKind::Flow(_)
+            | PaneKind::Predict(_) => {}
         }
         match self.panes[i].kind {
+            PaneKind::Deriv(_) | PaneKind::Liq(_) | PaneKind::Flow(_) | PaneKind::Predict(_) => {
+                actions.extend(self.flow_content(ui, i))
+            }
             PaneKind::Watchlist => actions.extend(self.watchlist(ui)),
             PaneKind::Help => self.help_panel(ui),
             PaneKind::Settings => {

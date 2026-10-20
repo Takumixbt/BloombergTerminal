@@ -161,12 +161,12 @@ pub fn rgba(c: Color32) -> [f32; 4] {
     [c.r() as f32 / 255.0, c.g() as f32 / 255.0, c.b() as f32 / 255.0, c.a() as f32 / 255.0]
 }
 
-/// Numbers, tickers and tables (SF Mono on macOS).
+/// Numbers, tickers and tables (SF Mono on macOS, Cascadia Mono / Consolas on Windows).
 pub fn mono(size: f32) -> FontId {
     FontId::new(size * SCALE.with(Cell::get), FontFamily::Monospace)
 }
 
-/// Chrome: titles, buttons, labels (SF Pro on macOS).
+/// Chrome: titles, buttons, labels (SF Pro on macOS, Segoe UI on Windows).
 pub fn ui_font(size: f32) -> FontId {
     let family = if UI_MONO.with(Cell::get) { FontFamily::Monospace } else { FontFamily::Proportional };
     FontId::new(size * SCALE.with(Cell::get), family)
@@ -187,6 +187,7 @@ fn install_fonts(ctx: &egui::Context, mono: MonoFont) {
         "/System/Library/Fonts/SFNS.ttf",
         "/System/Library/Fonts/SFNSText.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
+        "C:\\Windows\\Fonts\\segoeui.ttf",
     ];
     let candidates: &[(&str, FontFamily, &[&str])] =
         &[("system-ui", FontFamily::Proportional, ui_paths), ("system-mono", FontFamily::Monospace, mono.paths())];

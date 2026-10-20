@@ -10,6 +10,7 @@ tr-core.workspace = true
 tr-broker.workspace = true
 tr-congress.workspace = true
 tr-data.workspace = true
+tr-flow.workspace = true
 tr-chart.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
@@ -26,3 +27,6 @@ tr-macos.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 raw-window-handle = "0.6"
+
+[build-dependencies]
+winresource = "0.1"

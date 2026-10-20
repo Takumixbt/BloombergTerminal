@@ -483,7 +483,7 @@ fn setup_screen(ui: &mut Ui, b: &BrokerState, out: &mut Vec<PortAction>) {
         ui,
         "2",
         "Enter them in Brokerage Settings and Save",
-        "Stored in the macOS Keychain (or an owner-only file on Linux), never in the repository.",
+        "Stored in the macOS Keychain, the Windows Credential Manager or an owner-only file on Linux, never in the repository.",
         c.has_keys(),
     );
     step(

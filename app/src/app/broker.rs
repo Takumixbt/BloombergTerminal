@@ -1,4 +1,4 @@
-//! Brokerage accounts through SnapTrade: credential lifecycle (Keychain / private file,
+//! Brokerage accounts through SnapTrade: credential lifecycle (Keychain / Credential Manager / private file,
 //! environment overrides), user registration, the read-only Connection Portal, portfolio
 //! refresh scheduling and the `PORT`/`ACCT`/`POS`/`ORD`/`ACTV` commands. Order entry is in
 //! `trading`.
@@ -158,14 +158,7 @@ impl BrokerState {
 
 /// Open a URL or path with the system handler.
 pub fn open_external(target: &str) -> std::io::Result<()> {
-    let opener = if cfg!(target_os = "macos") {
-        "open"
-    } else if cfg!(target_os = "windows") {
-        "explorer"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(opener).arg(target).spawn().map(|_| ())
+    crate::platform::open_external(target)
 }
 
 /// A stable, non-identifying SnapTrade user id for this installation.

@@ -1,0 +1,4 @@
+{"code":"0","msg":"","data":[
+ {"instType":"SWAP","instId":"BTC-USDT-SWAP","markPx":"67010.2","ts":"1760936398000"},
+ {"instType":"SWAP","instId":"ETH-USDT-SWAP","markPx":"2565.3","ts":"1760936398000"}
+]}

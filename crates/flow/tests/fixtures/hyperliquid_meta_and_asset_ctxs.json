@@ -1,0 +1,14 @@
+[
+ {"universe":[
+   {"szDecimals":5,"name":"BTC","maxLeverage":40,"marginTableId":56},
+   {"szDecimals":4,"name":"ETH","maxLeverage":25,"marginTableId":55},
+   {"szDecimals":0,"name":"kPEPE","maxLeverage":10,"marginTableId":10},
+   {"szDecimals":0,"name":"OLDCOIN","maxLeverage":3,"marginTableId":3,"isDelisted":true}
+ ],"marginTables":[]},
+ [
+   {"funding":"0.0000125","openInterest":"25000.5","prevDayPx":"65601.0","dayNtlVlm":"3123456789.5","premium":"0.0002","oraclePx":"66991.0","markPx":"67005.0","midPx":"67004.5","impactPxs":["67004.0","67005.0"],"dayBaseVlm":"46789.1"},
+   {"funding":"-0.000003","openInterest":"512345.6","prevDayPx":"2601.2","dayNtlVlm":"1234567890.1","premium":"-0.0001","oraclePx":"2566.5","markPx":"2565.8","midPx":"2565.75","impactPxs":["2565.7","2565.8"],"dayBaseVlm":"480000.2"},
+   {"funding":"0.00002","openInterest":"9876543.0","prevDayPx":"0.012","dayNtlVlm":"45678901.2","premium":"0.0003","oraclePx":"0.012295","markPx":"0.012305","midPx":"0.0123","impactPxs":["0.0123","0.01231"],"dayBaseVlm":"3700000000"},
+   {"funding":"0.0","openInterest":"0.0","prevDayPx":"1.0","dayNtlVlm":"0.0","premium":null,"oraclePx":"1.0","markPx":"1.0","midPx":null,"impactPxs":null,"dayBaseVlm":"0.0"}
+ ]
+]

@@ -1,6 +1,9 @@
 //! terminal-rs: a keyboard-driven, Bloomberg-style market terminal with GPU charts and
 //! congressional (STOCK Act) trade tracking.
 
+// Release builds on Windows are GUI apps (no console window); logs go to a file instead.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 mod anim;
 mod app;
 mod chart_view;
@@ -11,6 +14,7 @@ mod layout;
 mod layouts;
 mod markets_view;
 mod palette;
+mod platform;
 mod prefs;
 mod theme;
 mod themes;
@@ -21,19 +25,28 @@ use std::time::Instant;
 
 fn main() -> eframe::Result {
     let t0 = Instant::now();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,wgpu_core=warn,wgpu_hal=warn,naga=warn".into()),
-        )
-        .init();
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| "info,wgpu_core=warn,wgpu_hal=warn,naga=warn".into());
+    let log_file = platform::log_file().and_then(|path| {
+        std::fs::create_dir_all(path.parent()?).ok()?;
+        std::fs::File::create(&path).ok()
+    });
+    match log_file {
+        Some(f) => tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_ansi(false)
+            .with_writer(std::sync::Mutex::new(f))
+            .init(),
+        None => tracing_subscriber::fmt().with_env_filter(filter).init(),
+    }
 
-    // MSAA smooths chart lines and drawings; 4x by default on macOS (TR_MSAA overrides).
+    // MSAA smooths chart lines and drawings; 4x by default on macOS and Windows, where a real
+    // GPU is the norm (TR_MSAA overrides).
     let msaa: u16 = std::env::var("TR_MSAA")
         .ok()
         .and_then(|v| v.parse().ok())
         .filter(|n| matches!(n, 1 | 2 | 4 | 8))
-        .unwrap_or(if cfg!(target_os = "macos") { 4 } else { 1 });
+        .unwrap_or(if cfg!(any(target_os = "macos", windows)) { 4 } else { 1 });
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("Terminal")
         .with_app_id("terminal-rs")

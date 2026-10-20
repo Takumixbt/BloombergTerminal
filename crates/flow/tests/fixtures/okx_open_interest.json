@@ -1,0 +1,4 @@
+{"code":"0","msg":"","data":[
+ {"instType":"SWAP","instId":"BTC-USDT-SWAP","oi":"4162704","oiCcy":"41627.04","oiUsd":"2789012345.6","ts":"1760936398000"},
+ {"instType":"SWAP","instId":"ETH-USDT-SWAP","oi":"5000000","oiCcy":"500000","ts":"1760936398000"}
+]}

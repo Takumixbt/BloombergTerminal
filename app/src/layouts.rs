@@ -114,6 +114,39 @@ pub enum PaneSettings {
         #[serde(default)]
         open_only: bool,
     },
+    /// Crypto derivatives board (`coin: None`) or one coin's detail.
+    Deriv {
+        #[serde(default)]
+        coin: Option<String>,
+        #[serde(default)]
+        apr: bool,
+    },
+    /// Live liquidations.
+    Liquidations {
+        #[serde(default)]
+        coin: Option<String>,
+        #[serde(default)]
+        min_usd: f64,
+    },
+    /// Order book heatmap or footprint for one perp.
+    Flow {
+        coin: String,
+        #[serde(default)]
+        venue: tr_flow::Exchange,
+        #[serde(default)]
+        view: crate::app::FlowView,
+        #[serde(default = "minute")]
+        tf_secs: i64,
+    },
+    /// Prediction markets (Polymarket).
+    Predict {
+        #[serde(default)]
+        query: String,
+    },
+}
+
+fn minute() -> i64 {
+    60
 }
 
 fn yes() -> bool {
@@ -240,6 +273,33 @@ impl LayoutDoc {
             PaneSettings::Watchlist,
         ];
         Self::preset(name, Layout::Grid2x2, panes)
+    }
+
+    /// Name of the built-in crypto workspace, created on first launch.
+    pub const CRYPTO_DESK: &'static str = "Crypto Desk";
+
+    /// BTC chart, derivatives board, book heatmap, footprint, liquidations and prediction
+    /// markets; the chart, heatmap and footprint share the blue link group.
+    pub fn crypto_workspace(defaults: &crate::prefs::PanelDefaults) -> LayoutDoc {
+        let flow =
+            |view| PaneSettings::Flow { coin: "BTC".into(), venue: tr_flow::Exchange::Binance, view, tf_secs: 60 };
+        let panes = vec![
+            chart_settings("BTCUSD Curncy", defaults),
+            flow(crate::app::FlowView::Heatmap),
+            PaneSettings::Deriv { coin: None, apr: false },
+            flow(crate::app::FlowView::Footprint),
+            PaneSettings::Liquidations { coin: None, min_usd: 0.0 },
+            PaneSettings::Predict { query: String::new() },
+        ];
+        let mut doc = Self::preset(Self::CRYPTO_DESK, Layout::Grid3x2, panes);
+        for p in doc
+            .panes
+            .iter_mut()
+            .filter(|p| matches!(p.settings, PaneSettings::Chart { .. } | PaneSettings::Flow { .. }))
+        {
+            p.link = Some(Link::Blue);
+        }
+        doc
     }
 
     pub fn preset(name: &str, layout: Layout, panes: Vec<PaneSettings>) -> LayoutDoc {

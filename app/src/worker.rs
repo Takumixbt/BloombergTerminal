@@ -21,6 +21,9 @@ use tr_data::{BarCache, Provider, Quote, SearchHit, YieldCurves};
 use crate::command::IndicatorSpec;
 use crate::theme;
 
+pub mod flow;
+pub use flow::{FlowRequest, FlowResponse};
+
 pub type PaneId = u64;
 
 /// Minutes between Congress disclosure checks (`TR_CONGRESS_REFRESH_MIN`; 0 disables).
@@ -123,6 +126,8 @@ pub enum Request {
     Search(String),
     /// Order entry (see `app::trading`); only sent once trading is enabled.
     Trade(TradeRequest),
+    /// Crypto derivatives, order flow and prediction markets (`tr-flow`).
+    Flow(FlowRequest),
 }
 
 /// A trading call through SnapTrade. Previews never place anything; placing takes a preview
@@ -277,6 +282,7 @@ pub enum Response {
         hits: Vec<SearchHit>,
     },
     Trade(Box<TradeResponse>),
+    Flow(Box<FlowResponse>),
 }
 
 pub struct Worker {
@@ -297,6 +303,7 @@ struct Shared {
     db: Mutex<Db>,
     out: mpsc::Sender<Response>,
     ctx: egui::Context,
+    flow: flow::FlowShared,
 }
 
 impl Shared {
@@ -310,7 +317,13 @@ pub fn data_dir() -> PathBuf {
     if let Some(d) = std::env::var_os("TR_DATA_DIR") {
         return PathBuf::from(d);
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("."));
+    // Roaming app data on Windows (`%APPDATA%\terminal-rs`), like other desktop apps.
+    if cfg!(windows)
+        && let Some(appdata) = std::env::var_os("APPDATA")
+    {
+        return PathBuf::from(appdata).join("terminal-rs");
+    }
+    let home = crate::platform::home_dir().unwrap_or_else(|| PathBuf::from("."));
     if cfg!(target_os = "macos") {
         home.join("Library/Application Support/terminal-rs")
     } else {
@@ -345,6 +358,7 @@ impl Worker {
             db: Mutex::new(db),
             out,
             ctx,
+            flow: Default::default(),
         });
 
         // Request dispatcher: every request runs as its own task.
@@ -695,6 +709,7 @@ async fn handle(s: &Arc<Shared>, req: Request) {
             s.send(Response::SearchHits { query, hits });
         }
         Request::Trade(t) => s.send(Response::Trade(Box::new(trade(t).await))),
+        Request::Flow(r) => flow::handle(s, r).await,
     }
 }
 
@@ -925,6 +940,7 @@ mod tests {
             db: Mutex::new(Db::open_in_memory().unwrap()),
             out,
             ctx: egui::Context::default(),
+            flow: Default::default(),
         };
         // The newer load's task starts first; the older one must not take over.
         assert!(claim_series(&s, 1, 2));
@@ -943,5 +959,54 @@ mod tests {
             i * 2
         })));
         assert_eq!(out, (0..20).map(|i| i * 2).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn flow_requests_answer_offline() {
+        let (out, rx) = mpsc::channel();
+        let s = Shared {
+            provider: std::sync::Arc::new(tr_data::sample::SampleProvider::at(0, 10)),
+            series: Default::default(),
+            cache: std::sync::Mutex::new(None),
+            db: Mutex::new(Db::open_in_memory().unwrap()),
+            out,
+            ctx: egui::Context::default(),
+            flow: Default::default(),
+        };
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let market = Box::new(tr_flow::sample::markets().remove(0));
+        rt.block_on(async {
+            for r in [
+                FlowRequest::Board,
+                FlowRequest::Coin { pane: 1, coin: "BTC".into() },
+                FlowRequest::Liquidations,
+                FlowRequest::Stream { pane: 2, venue: tr_flow::Exchange::Hyperliquid, coin: "ETH".into(), tf_secs: 60 },
+                FlowRequest::Markets,
+                FlowRequest::MarketDetail { pane: 3, market },
+            ] {
+                flow::handle(&s, r).await;
+            }
+        });
+        let got: Vec<FlowResponse> = rx
+            .try_iter()
+            .map(|r| match r {
+                Response::Flow(f) => *f,
+                _ => panic!("unexpected response"),
+            })
+            .collect();
+        assert_eq!(got.len(), 6);
+        assert!(matches!(&got[0], FlowResponse::Board(b) if b.simulated && !b.rows.is_empty()));
+        assert!(matches!(&got[1], FlowResponse::Coin { pane: 1, term: Some(_), .. }));
+        assert!(matches!(&got[3], FlowResponse::Stream { pane: 2, .. }));
+        assert!(matches!(&got[4], FlowResponse::Markets(Ok(m)) if !m.is_empty()));
+        assert!(matches!(&got[5], FlowResponse::MarketDetail { pane: 3, .. }));
+        // The liquidation tape is shared while someone holds it.
+        assert!(matches!(&got[2], FlowResponse::Liquidations(_)));
+        assert!(s.flow_tape_alive());
+        // The feed task holds the only other clone; it exits on its next check, which
+        // dropping the runtime stands in for here.
+        drop(got);
+        drop(rt);
+        assert!(!s.flow_tape_alive(), "nothing keeps the tape alive once panes drop it");
     }
 }

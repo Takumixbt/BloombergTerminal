@@ -20,7 +20,7 @@ use crate::widgets::{self, Icon};
 use crate::worker::{Request, Worker};
 
 /// Panels offered by the + menus: label and command word.
-pub const PANELS: [(&str, &str); 14] = [
+pub const PANELS: [(&str, &str); 19] = [
     ("Chart", "CHART"),
     ("Watchlist", "WL"),
     ("News", "NEWS"),
@@ -33,6 +33,11 @@ pub const PANELS: [(&str, &str); 14] = [
     ("Politicians", "POL"),
     ("Alerts", "ALRT"),
     ("Security Search", "SECF"),
+    ("Crypto Derivatives", "DERIV"),
+    ("Liquidations", "LIQ"),
+    ("Book Heatmap", "HEAT"),
+    ("Footprint / CVD", "FOOT"),
+    ("Prediction Markets", "PRED"),
     ("Settings", "PREFS"),
     ("Help", "HELP"),
 ];
@@ -272,10 +277,7 @@ fn tab_h() -> f32 {
 }
 
 fn expand_home(p: &str) -> PathBuf {
-    match p.strip_prefix("~/") {
-        Some(rest) => std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join(rest),
-        None => PathBuf::from(p),
-    }
+    crate::platform::expand_home(p)
 }
 
 impl TerminalApp {
@@ -303,6 +305,19 @@ impl TerminalApp {
 
     /// The security the user is looking at: the focused pane's, its link group's, or the
     /// first chart's.
+    /// The focused pane's coin when it shows a crypto market (BTC otherwise), for flow panes.
+    pub(super) fn focused_coin(&self) -> String {
+        let f = self.idx(self.focus).map(|i| &self.panes[i].kind);
+        match f {
+            Some(PaneKind::Flow(x)) => return x.coin.clone(),
+            Some(PaneKind::Deriv(d)) if d.coin.is_some() => return d.coin.clone().unwrap_or_default(),
+            _ => {}
+        }
+        self.focused_symbol()
+            .filter(|s| tr_data::security(s).class == tr_core::AssetClass::Crypto)
+            .map_or_else(|| "BTC".into(), |s| tr_flow::venue::coin_of_key(&s))
+    }
+
     pub(super) fn focused_symbol(&self) -> Option<String> {
         let f = self.idx(self.focus).map(|i| &self.panes[i]);
         if let Some(s) = f.and_then(|p| p.kind.symbol()) {
@@ -485,6 +500,16 @@ impl TerminalApp {
                 if o.symbol != key {
                     **o = super::OptionsPane::new(&key, o.strikes, o.show_greeks);
                 }
+            }
+            // Crypto flow panes follow crypto keys only.
+            PaneKind::Flow(f) if tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
+                f.retarget(&key, f.venue);
+            }
+            PaneKind::Deriv(d) if d.coin.is_some() && tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
+                d.set_coin(Some(tr_flow::venue::coin_of_key(&key)));
+            }
+            PaneKind::Liq(l) if l.coin.is_some() && tr_data::security(&key).class == tr_core::AssetClass::Crypto => {
+                l.coin = Some(tr_flow::venue::coin_of_key(&key));
             }
             _ => return false,
         }
@@ -698,6 +723,25 @@ impl TerminalApp {
             "SECF" | "SEARCH" => PaneKind::Search { query: words[1..].join(" ") },
             "PREFS" | "SETTINGS" | "PDF" => PaneKind::Settings,
             "HELP" => PaneKind::Help,
+            "DERIV" | "DERV" | "PERPS" | "FUNDING" | "OI" => {
+                PaneKind::Deriv(Box::new(super::flow_view::DerivPane::new(words.get(1).map(|w| w.to_string()), false)))
+            }
+            "LIQ" | "LIQS" | "LIQUIDATIONS" => {
+                PaneKind::Liq(Box::new(super::flow_view::LiqPane::new(words.get(1).map(|w| w.to_string()), 0.0)))
+            }
+            "HEAT" | "HEATMAP" | "FOOT" | "FOOTPRINT" | "CVD" => {
+                let view = if head.starts_with("HEAT") { super::FlowView::Heatmap } else { super::FlowView::Footprint };
+                let coin = words.get(1).map_or_else(|| self.focused_coin(), |w| tr_flow::venue::coin_of_key(w));
+                let venue = words
+                    .iter()
+                    .skip(1)
+                    .find_map(|w| tr_flow::Exchange::parse(w))
+                    .unwrap_or(tr_flow::Exchange::Binance);
+                PaneKind::Flow(Box::new(super::flow_view::FlowPane::new(&coin, venue, view, 60)))
+            }
+            "PRED" | "PREDICT" | "POLY" | "POLYMARKET" => {
+                PaneKind::Predict(Box::new(super::flow_view::PredPane::new(&words[1..].join(" "))))
+            }
             _ => return None,
         })
     }
@@ -965,8 +1009,7 @@ impl TerminalApp {
             }
             LayoutOp::OpenFolder => {
                 std::fs::create_dir_all(&self.store.dir)?;
-                let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-                std::process::Command::new(opener).arg(&self.store.dir).spawn()?;
+                crate::platform::open_external(&self.store.dir)?;
                 Ok(format!("Opened {}", self.store.dir.display()))
             }
         })();

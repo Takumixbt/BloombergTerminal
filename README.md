@@ -1,4 +1,52 @@
-# terminal-rs
+# terminal-rs (Windows + crypto order-flow fork)
+
+> **This fork** of [michaelshimeles/terminal-rs](https://github.com/michaelshimeles/terminal-rs)
+> adds a **native Windows app** (installer, Credential Manager, `%APPDATA%` storage) and
+> **crypto derivatives and order-flow panes** inspired by [Velo](https://velo.xyz) and
+> [OpenMarket](https://openmarket.xyz): a cross-venue funding / open interest / basis board,
+> live liquidations, an order book heatmap, footprint charts with CVD, and Polymarket
+> prediction markets. Every data source is listed in [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md);
+> attribution and licence status are in [`NOTICE.md`](NOTICE.md).
+>
+> ![Crypto Desk layout (offline sample data): BTC chart, order book heatmap, derivatives board, footprint, liquidations and prediction markets](docs/img/crypto-desk.png)
+>
+> | | |
+> |---|---|
+> | ![BTC perpetuals detail: per-venue funding, open interest, history, Deribit curve and DVOL; a Polymarket market with odds history and order book](docs/img/crypto-detail.png) | **`DERIV BTC`** — every venue's price, mark, index, premium, funding (per interval, 8h, APR) and next funding; open interest, funding, long/short and taker-flow history; Deribit annualised basis curve and DVOL. **`PRED`** — Polymarket odds history and order book. Screenshots use `TR_PROVIDER=sample` (marked SIMULATED). |
+>
+> ### What this fork adds
+>
+> | Command | Pane | Data |
+> |---|---|---|
+> | `DERIV` (`FUNDING`, `OI`, `PERPS`) | Every USDT perp across **Binance, Bybit, OKX, Hyperliquid** (+ Deribit BTC/ETH): price, 24h, aggregated OI, OI 24h change, volume, OI-weighted funding (8h or APR), funding per venue, premium, long/short. Sortable, filterable; click a row to drill in | Venue public REST |
+> | `DERIV ETH` / `SOLUSD CRNCY DERIV` | One coin: per-venue table with next funding countdown; 7-day OI, funding, long/short and taker buy/sell charts; Deribit futures curve (annualised basis) and DVOL | Binance futures data, Deribit |
+> | `LIQ` / `LIQ BTC` | Live liquidations tape, longs vs shorts rekt over 5m/1h/4h/24h, size filter, top coins | Binance, Bybit, OKX websockets |
+> | `HEAT` / `HEAT ETH HL` | Order book heatmap (resting liquidity over time, log-scaled), best bid/ask, trade bubbles, live book profile, CVD | Binance USDⓈ-M depth diff stream (synced by update id) or Hyperliquid `l2Book` |
+> | `FOOT` / `FOOT SOL` / `CVD` | Footprint candles (sell × buy at each price, imbalance shading, POC), delta row and CVD; 1m/5m/15m/1h; drag to scroll, wheel to zoom | Live trade stream (`aggTrade` or Hyperliquid `trades`) |
+> | `PRED` / `PRED fed` | Polymarket markets by 24h volume with search; outcome odds history and order book | Polymarket Gamma + CLOB APIs |
+> | `LAYOUT Crypto Desk` | All of the above in one 3×2 workspace (created on first launch), with the chart, heatmap and footprint in the blue link group | |
+>
+> The new panes are in the `+` menus, the ⌘K/Ctrl+K palette and Help (F1), save with layouts,
+> follow link groups for crypto keys, and run fully offline with `TR_PROVIDER=sample`.
+> Feature-by-feature comparison and roadmap: [`docs/analysis/velo-openmarket.md`](docs/analysis/velo-openmarket.md).
+>
+> ### Windows
+>
+> - **Install:** download `terminal-rs-<version>-setup-x64.exe` (per-user install, no admin
+>   rights; Start menu shortcut) or the portable `…-windows-x64.zip` from the GitHub Actions
+>   artifacts or a release (push a `v*` tag to publish one).
+> - **Build it yourself:** install [Rust](https://rustup.rs) (MSVC toolchain), then
+>   `cargo run --release`, or `powershell -ExecutionPolicy Bypass -File scripts\package-windows.ps1`
+>   for the zip and (with [Inno Setup 6](https://jrsoftware.org/isinfo.php)) the installer.
+>   From Linux: `scripts/build-windows-cross.sh` (mingw-w64).
+> - **Where things live:** settings, layouts, themes and caches in `%APPDATA%\terminal-rs`;
+>   SnapTrade secrets in **Windows Credential Manager** (`terminal-rs/snaptrade`); logs in
+>   `%APPDATA%\terminal-rs\terminal-rs.log` (release builds have no console window;
+>   `TR_LOG_FILE=` with an empty value logs to stdout).
+> - Shortcuts: ⌘ is **Ctrl** and ⌥ is **Alt**. Fonts: Segoe UI and Cascadia Mono / Consolas.
+>   Charts use DirectX 12 or Vulkan through wgpu with 4× MSAA by default.
+
+---
 
 A fast, keyboard-driven market terminal in pure Rust: TradingView-class GPU charting with a
 Bloomberg Terminal look (dense tiled panes, monospace numbers, a command line like `AAPL <GO>`)
@@ -330,6 +378,9 @@ crates/data     MarketData trait; per-class router (Binance/Coinbase, Treasury.g
                 Alpaca), websocket live feeds, sample provider with simulated ticks; bar cache
 crates/chart    wgpu renderer, LOD pyramids, viewport math, axes, drawings, egui paint callback
 crates/congress Senate eFD + House Clerk parsers, rosters, SQLite store, refresh, alerts, performance
+crates/flow     crypto derivatives (Binance/Bybit/OKX/Hyperliquid/Deribit funding, OI, basis),
+                liquidation streams, order flow (synced local book, heatmap, footprint, CVD),
+                Polymarket; pure parsers tested on fixtures, deterministic sample mode
 crates/broker   SnapTrade client (request signing, accounts, balances, positions, orders, activity),
                 order entry (impact preview, place, cancel, capabilities), portfolio model and P&L,
                 Keychain / owner-only credential store, simulated sample and order simulator
@@ -425,7 +476,9 @@ cargo bench -p tr-core && cargo bench -p tr-chart
 
 ## Platform notes and limitations
 
-- macOS is the primary target (wgpu Metal backend); Linux works with Vulkan or GL. This repository
+- Windows 10/11 x64 is supported in this fork (DirectX 12 or Vulkan); CI builds, tests, lints,
+  smoke-runs and packages it. macOS remains upstream's primary target (wgpu Metal backend);
+  Linux works with Vulkan or GL. This repository
   was developed and run on Linux (X11, software Vulkan). For macOS, the GPU and UI stack (`tr-core`,
   `tr-chart`, `tr-macos`, eframe/winit) is cross-checked for `aarch64-apple-darwin`, and CI
   (`.github/workflows/ci.yml`) builds, tests, lints and launches the app with screenshots on macOS

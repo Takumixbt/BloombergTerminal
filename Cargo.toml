@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/core", "crates/broker", "crates/congress", "crates/data", "crates/chart", "crates/macos", "app"]
+members = ["crates/core", "crates/broker", "crates/congress", "crates/data", "crates/flow", "crates/chart", "crates/macos", "app"]
 default-members = ["app"]
 
 [workspace.package]
@@ -13,6 +13,7 @@ tr-core = { path = "crates/core" }
 tr-broker = { path = "crates/broker" }
 tr-congress = { path = "crates/congress" }
 tr-data = { path = "crates/data" }
+tr-flow = { path = "crates/flow" }
 tr-chart = { path = "crates/chart" }
 tr-macos = { path = "crates/macos" }
 anyhow = "1"

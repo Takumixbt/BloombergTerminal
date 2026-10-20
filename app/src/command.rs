@@ -273,6 +273,32 @@ pub enum Function {
     Trade(TradeArgs),
     /// Switch between the demo account and live accounts (`DEMO`, `MODE LIVE`); `true` = live.
     AccountMode(bool),
+    /// Crypto derivatives board, or one coin (`DERIV`, `DERIV ETH`, `SOLUSD CRNCY DERIV`).
+    Deriv(Option<String>),
+    /// Live liquidations, optionally for one coin.
+    Liquidations(Option<String>),
+    /// Order book heatmap or footprint (`HEAT`, `FOOT ETH HL`).
+    OrderFlow {
+        view: crate::app::FlowView,
+        venue: Option<tr_flow::Exchange>,
+        coin: Option<String>,
+    },
+    /// Prediction markets, with an optional search.
+    Predict(String),
+}
+
+/// `[COIN] [VENUE]` in either order (`ETH`, `HL`, `SOL BIN`).
+fn coin_venue(rest: &[&str]) -> (Option<String>, Option<tr_flow::Exchange>) {
+    let mut coin = None;
+    let mut venue = None;
+    for w in rest {
+        match tr_flow::Exchange::parse(w) {
+            Some(v) if venue.is_none() => venue = Some(v),
+            _ if coin.is_none() => coin = Some(tr_flow::venue::coin_of_key(w)),
+            _ => {}
+        }
+    }
+    (coin, venue)
 }
 
 fn num<T: std::str::FromStr>(t: Option<&&str>) -> Option<T> {
@@ -362,6 +388,22 @@ fn parse_function(head: &str, rest: &[&str]) -> Option<Function> {
             _ => return None,
         },
         "RANGE" => Function::Range(Range::parse(rest.first()?)?),
+        "DERIV" | "DERV" | "PERPS" | "PERP" | "FUNDING" | "OI" => {
+            Function::Deriv(rest.first().map(|c| tr_flow::venue::coin_of_key(c)))
+        }
+        "LIQ" | "LIQS" | "LIQUIDATIONS" | "REKT" => {
+            Function::Liquidations(rest.first().map(|c| tr_flow::venue::coin_of_key(c)))
+        }
+        "HEAT" | "HEATMAP" | "BOOKMAP" | "FOOT" | "FOOTPRINT" | "CVD" => {
+            let view = if matches!(up.as_str(), "HEAT" | "HEATMAP" | "BOOKMAP") {
+                crate::app::FlowView::Heatmap
+            } else {
+                crate::app::FlowView::Footprint
+            };
+            let (coin, venue) = coin_venue(rest);
+            Function::OrderFlow { view, venue, coin }
+        }
+        "PRED" | "PREDICT" | "POLY" | "POLYMARKET" => Function::Predict(joined()),
         // Timeframes win where spellings overlap (`1D`, `1M`); otherwise try a range (`5D`, `YTD`),
         // then the indicator catalog (`RSI`, `BB 20 2.5`).
         _ => {
@@ -482,6 +524,18 @@ fn describe(f: &Function) -> String {
         Function::Sidebar(s) if s.is_empty() => "Toggle the sidebar".into(),
         Function::Sidebar(s) => format!("Sidebar {}", s.to_lowercase()),
         Function::Settings => "Settings: theme, fonts, density, hotkeys, panels, layouts".into(),
+        Function::Deriv(None) => "Crypto derivatives: funding, open interest, basis across venues".into(),
+        Function::Deriv(Some(c)) => format!("{c} perpetuals: venues, OI/funding history, futures curve"),
+        Function::Liquidations(None) => "Live liquidations (Binance, Bybit, OKX)".into(),
+        Function::Liquidations(Some(c)) => format!("{c} liquidations"),
+        Function::OrderFlow { view, venue, coin } => format!(
+            "{} {}{}",
+            if *view == crate::app::FlowView::Heatmap { "Order book heatmap" } else { "Footprint + CVD" },
+            coin.as_deref().unwrap_or("(focused coin)"),
+            venue.map(|v| format!(" on {}", v.label())).unwrap_or_default()
+        ),
+        Function::Predict(q) if q.is_empty() => "Prediction markets (Polymarket)".into(),
+        Function::Predict(q) => format!("Prediction markets matching \"{q}\""),
         Function::Theme(t) => format!("Theme {t}"),
         Function::Title(t) => format!("Rename tab to {t:?}"),
         Function::ClosePane => "Close focused pane".into(),

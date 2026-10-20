@@ -7,6 +7,7 @@
 mod broker;
 mod chrome;
 mod demo;
+mod flow_view;
 mod hotkeys_view;
 mod options_view;
 mod palette_view;
@@ -18,6 +19,7 @@ mod trading;
 mod workspace;
 
 pub use broker::PosSort;
+pub use flow_view::FlowView;
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -74,6 +76,14 @@ pub enum PaneKind {
     /// Brokerage accounts through SnapTrade (`PORT`, `ACCT`, `POS`, `ORD`, `ACTV`).
     Portfolio(Box<broker::PortfolioPane>),
     Settings,
+    /// Crypto derivatives board or one coin's detail (`DERIV`).
+    Deriv(Box<flow_view::DerivPane>),
+    /// Live liquidations (`LIQ`).
+    Liq(Box<flow_view::LiqPane>),
+    /// Order book heatmap or footprint (`HEAT`, `FOOT`).
+    Flow(Box<flow_view::FlowPane>),
+    /// Prediction markets (`PRED`).
+    Predict(Box<flow_view::PredPane>),
 }
 
 pub struct OptionsPane {
@@ -189,6 +199,19 @@ impl PaneKind {
             PaneKind::Options(o) => format!("{} Options", short(&o.symbol)),
             PaneKind::Portfolio(p) => p.title(),
             PaneKind::Settings => "Settings".into(),
+            PaneKind::Deriv(d) => match &d.coin {
+                Some(c) => format!("{c} Perps"),
+                None => "Derivatives".into(),
+            },
+            PaneKind::Liq(l) => match &l.coin {
+                Some(c) => format!("{c} Liquidations"),
+                None => "Liquidations".into(),
+            },
+            PaneKind::Flow(f) => match f.view {
+                FlowView::Heatmap => format!("{} Heatmap", f.coin),
+                FlowView::Footprint => format!("{} Footprint", f.coin),
+            },
+            PaneKind::Predict(_) => "Predictions".into(),
         }
     }
 
@@ -209,6 +232,11 @@ impl PaneKind {
             PaneKind::Options(_) => "OMON",
             PaneKind::Portfolio(p) => p.view.code(),
             PaneKind::Settings => "PDF",
+            PaneKind::Deriv(_) => "DERV",
+            PaneKind::Liq(_) => "LIQ",
+            PaneKind::Flow(f) if f.view == FlowView::Heatmap => "HEAT",
+            PaneKind::Flow(_) => "FOOT",
+            PaneKind::Predict(_) => "PRED",
         }
     }
 
@@ -276,6 +304,12 @@ impl PaneKind {
                 sort: p.sort,
                 open_only: p.open_only,
             },
+            PaneKind::Deriv(d) => PaneSettings::Deriv { coin: d.coin.clone(), apr: d.apr },
+            PaneKind::Liq(l) => PaneSettings::Liquidations { coin: l.coin.clone(), min_usd: l.min_usd },
+            PaneKind::Flow(f) => {
+                PaneSettings::Flow { coin: f.coin.clone(), venue: f.venue, view: f.view, tf_secs: f.tf_secs }
+            }
+            PaneKind::Predict(p) => PaneSettings::Predict { query: p.query.clone() },
         }
     }
 
@@ -325,6 +359,14 @@ impl PaneKind {
             PaneSettings::Portfolio { view, account, symbol, sort, open_only } => {
                 PaneKind::Portfolio(Box::new(broker::PortfolioPane { view, account, symbol, sort, open_only }))
             }
+            PaneSettings::Deriv { coin, apr } => PaneKind::Deriv(Box::new(flow_view::DerivPane::new(coin, apr))),
+            PaneSettings::Liquidations { coin, min_usd } => {
+                PaneKind::Liq(Box::new(flow_view::LiqPane::new(coin, min_usd)))
+            }
+            PaneSettings::Flow { coin, venue, view, tf_secs } => {
+                PaneKind::Flow(Box::new(flow_view::FlowPane::new(&coin, venue, view, tf_secs)))
+            }
+            PaneSettings::Predict { query } => PaneKind::Predict(Box::new(flow_view::PredPane::new(&query))),
         }
     }
 }
@@ -514,6 +556,8 @@ pub struct TerminalApp {
     demo: demo::DemoState,
     /// ⌘K command palette.
     palette: crate::palette::Palette,
+    /// Derivatives board, liquidation tape and prediction markets shared by their panes.
+    flow: flow_view::FlowData,
 }
 
 /// Resolve a run of words (`BTCUSD CRNCY AAPL US EQUITY MSFT`) into market keys.
@@ -643,6 +687,7 @@ impl TerminalApp {
             chrome: None,
             last_chrome_poll: None,
             palette: crate::palette::Palette::load(&data_dir().join("palette.json")),
+            flow: Default::default(),
         };
         let mut doc = None;
         if let Some(s) = &settings {
@@ -662,12 +707,20 @@ impl TerminalApp {
                 doc = migrate_legacy(s, &app.prefs.panels);
             }
         }
+        let first_run = app.store.list().is_empty();
         let doc = doc
             .or_else(|| app.store.list().first().and_then(|n| app.store.load(n).ok()))
             .unwrap_or_else(|| LayoutDoc::default_workspace("Default", &app.prefs.panels));
         app.apply_doc(doc);
         if !app.store.exists(&app.layout_name) {
             app.save_layout();
+        }
+        // New installs also get a ready-made crypto workspace (`LAYOUT Crypto Desk`).
+        if first_run
+            && !app.store.exists(LayoutDoc::CRYPTO_DESK)
+            && let Err(e) = app.store.save(&LayoutDoc::crypto_workspace(&app.prefs.panels))
+        {
+            tracing::warn!("saving the Crypto Desk layout: {e:#}");
         }
         app.refresh_layout_names();
         app.worker.send(Request::Latest { limit: 2_000 });
@@ -764,6 +817,16 @@ impl TerminalApp {
                 self.status = format!("{s}: option chain");
             }
             Command::SymbolFunction(s, Function::Portfolio(view, arg)) => self.portfolio_command(view, &arg, Some(s)),
+            Command::SymbolFunction(s, f @ (Function::Deriv(None) | Function::Liquidations(None))) => {
+                let coin = Some(tr_flow::venue::coin_of_key(&s));
+                self.apply(match f {
+                    Function::Deriv(_) => Function::Deriv(coin),
+                    _ => Function::Liquidations(coin),
+                });
+            }
+            Command::SymbolFunction(s, Function::OrderFlow { view, venue, coin: None }) => {
+                self.apply(Function::OrderFlow { view, venue, coin: Some(tr_flow::venue::coin_of_key(&s)) });
+            }
             Command::SymbolFunction(s, Function::Trade(mut t)) => {
                 t.symbol = Some(s);
                 self.open_ticket(t, None);
@@ -858,6 +921,23 @@ impl TerminalApp {
                 self.open_panel(PaneKind::OrderBook(Box::new(BookPane::new(&sym, depth, 0.0))));
             }
             Function::Settings => self.open_panel(PaneKind::Settings),
+            Function::Deriv(coin) => {
+                // Drill an open board into the coin rather than stacking another pane.
+                let target = self.panes.iter_mut().find(|p| p.id == self.focus).map(|p| &mut p.kind);
+                match target {
+                    Some(PaneKind::Deriv(d)) => d.set_coin(coin),
+                    _ => self.open_panel(PaneKind::Deriv(Box::new(flow_view::DerivPane::new(coin, false)))),
+                }
+            }
+            Function::Liquidations(coin) => {
+                self.open_panel(PaneKind::Liq(Box::new(flow_view::LiqPane::new(coin, 0.0))));
+            }
+            Function::OrderFlow { view, venue, coin } => {
+                let coin = coin.unwrap_or_else(|| self.focused_coin());
+                let venue = venue.unwrap_or(tr_flow::Exchange::Binance);
+                self.open_panel(PaneKind::Flow(Box::new(flow_view::FlowPane::new(&coin, venue, view, 60))));
+            }
+            Function::Predict(q) => self.open_panel(PaneKind::Predict(Box::new(flow_view::PredPane::new(&q)))),
             Function::Options => {
                 let sym = self.optionable_symbol();
                 self.open_panel(PaneKind::Options(Box::new(OptionsPane::new(&sym, 12, true))));
@@ -1063,6 +1143,7 @@ impl TerminalApp {
                 Response::Curves(c) => self.curves = Some(c),
                 Response::SearchHits { query, hits } => self.net_hits = (query, hits),
                 Response::Trade(r) => self.on_trade(*r),
+                Response::Flow(r) => self.flow_response(*r),
                 Response::CongressRefreshed(summary) => {
                     self.congress_status = summary.to_string();
                     self.congress_checked = Some(chrono::Local::now());
@@ -1362,6 +1443,7 @@ impl TerminalApp {
             }
         }
         self.broker_periodic(&visible);
+        self.flow_periodic(&visible);
         if let Some((q, at)) = &self.search_pending
             && at.elapsed() > Duration::from_millis(300)
         {
