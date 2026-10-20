@@ -12,5 +12,7 @@ cargo build --release --target "$target" -p terminal-rs
 stage=dist/terminal-rs
 rm -rf "$stage" && mkdir -p "$stage"
 cp "target/$target/release/terminal-rs.exe" README.md NOTICE.md docs/DATA_SOURCES.md "$stage/"
+# The GNU toolchain embeds the release profile's debug info in the exe; strip it.
+x86_64-w64-mingw32-strip "$stage/terminal-rs.exe"
 (cd dist && rm -f "terminal-rs-$version-windows-x64-gnu.zip" && zip -qr "terminal-rs-$version-windows-x64-gnu.zip" terminal-rs)
 echo "dist/terminal-rs-$version-windows-x64-gnu.zip"
