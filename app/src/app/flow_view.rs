@@ -386,7 +386,7 @@ fn board_header(ui: &mut Ui, d: &mut DerivPane, b: &Board) {
         let when = chrono::DateTime::from_timestamp(b.updated, 0)
             .map(|t| t.with_timezone(&chrono::Local).format("%H:%M:%S").to_string())
             .unwrap_or_default();
-        note(ui, format!("{} coins · updated {when} · click a row for detail", b.rows.len()));
+        note(ui, format!("{} coins · {when}", b.rows.len()));
         for (e, err) in &b.errors {
             ui.label(RichText::new(format!("{} offline", e.short())).font(ui_font(11.0)).color(theme::down()))
                 .on_hover_text(err);
@@ -1095,17 +1095,17 @@ fn heatmap(ui: &mut Ui, f: &mut FlowPane, flow: &SharedFlow, rect: Rect, hover: 
         let mut sizes: Vec<f32> =
             cols.iter().flat_map(|c| (b_lo..=b_hi).map(move |b| c.size_at(b))).filter(|s| *s > 0.0).collect();
         sizes.sort_by(f32::total_cmp);
-        // Log scale, saturating at the 97th percentile, so ordinary liquidity stays visible
-        // next to a few large walls.
-        let cap = sizes.get(sizes.len() * 97 / 100).copied().unwrap_or(1.0).max(1e-9);
-        let norm = (1.0 + cap / sizes.get(sizes.len() / 2).copied().unwrap_or(cap).max(1e-9) * 4.0).ln();
+        // Log scale relative to the median level, saturating at the 98th percentile, then a
+        // power curve so typical liquidity stays dark and only real walls light up.
         let med = sizes.get(sizes.len() / 2).copied().unwrap_or(1.0).max(1e-9);
+        let cap = sizes.get(sizes.len() * 98 / 100).copied().unwrap_or(1.0).max(med * 2.0);
+        let norm = (1.0 + cap / med).ln();
         let mut px = Vec::with_capacity(cols.len() * rows);
         for r in 0..rows {
             let b = b_hi - r as i64;
             for c in &cols {
                 let s = c.size_at(b);
-                px.push(heat_color(if s > 0.0 { (1.0 + s / med * 4.0).ln() / norm } else { 0.0 }));
+                px.push(heat_color(if s > 0.0 { ((1.0 + s / med).ln() / norm).powf(1.6) } else { 0.0 }));
             }
         }
         let img = ColorImage::new([cols.len(), rows], px);
@@ -1216,15 +1216,31 @@ fn footprint(ui: &mut Ui, f: &mut FlowPane, flow: &SharedFlow, rect: Rect, hover
         );
         return;
     }
-    let step = foot.step.max(1e-12);
-    let lo = candles.iter().map(|c| c.low).fold(f64::INFINITY, f64::min) - step;
-    let hi = candles.iter().map(|c| c.high).fold(f64::NEG_INFINITY, f64::max) + 2.0 * step;
+    let base_step = foot.step.max(1e-12);
+    let lo = candles.iter().map(|c| c.low).fold(f64::INFINITY, f64::min) - base_step;
+    let hi = candles.iter().map(|c| c.high).fold(f64::NEG_INFINITY, f64::max) + 2.0 * base_step;
     let y = |v: f64| plot.bottom() - ((v - lo) / (hi - lo)) as f32 * plot.height();
+    // Merge price buckets until a row is tall enough for its bid × ask numbers, as footprint
+    // charts do when zoomed out.
+    let merge = ((dp(14.0) / (y(0.0) - y(base_step)).abs().max(0.01)).ceil() as i64).clamp(1, 1_000);
+    let step = base_step * merge as f64;
     let row_h = (y(0.0) - y(step)).abs();
+    let merged: Vec<std::collections::BTreeMap<i64, (f64, f64)>> = candles
+        .iter()
+        .map(|c| {
+            let mut m = std::collections::BTreeMap::new();
+            for (&b, &(buy, sell)) in &c.levels {
+                let e = m.entry(b.div_euclid(merge)).or_insert((0.0, 0.0));
+                e.0 += buy;
+                e.1 += sell;
+            }
+            m
+        })
+        .collect();
     let x0 = plot.right() - candles.len() as f32 * cw;
     let pc = p.with_clip_rect(plot);
-    let vmax = candles.iter().flat_map(|c| c.levels.values().map(|l| l.0.max(l.1))).fold(0.0, f64::max).max(1e-12);
-    let show_text = row_h >= dp(11.0) && cw >= dp(60.0);
+    let vmax = merged.iter().flat_map(|m| m.values().map(|l| l.0.max(l.1))).fold(0.0, f64::max).max(1e-12);
+    let show_text = row_h >= dp(11.0) && cw >= dp(56.0);
     let fmt_q = |q: f64| {
         if q >= 1000.0 {
             format!("{:.1}K", q / 1000.0)
@@ -1240,8 +1256,9 @@ fn footprint(ui: &mut Ui, f: &mut FlowPane, flow: &SharedFlow, rect: Rect, hover
         let left = x0 + k as f32 * cw;
         let body_x = left + dp(5.0);
         let cells = Rect::from_min_max(pos2(left + dp(10.0), plot.top()), pos2(left + cw - 2.0, plot.bottom()));
-        let poc = c.poc();
-        for (&b, &(buy, sell)) in &c.levels {
+        let levels = &merged[k];
+        let poc = levels.iter().max_by(|a, b| (a.1.0 + a.1.1).total_cmp(&(b.1.0 + b.1.1))).map(|(&b, _)| b);
+        for (&b, &(buy, sell)) in levels {
             let top = y((b + 1) as f64 * step);
             let r = Rect::from_min_max(pos2(cells.left(), top + 0.5), pos2(cells.right(), y(b as f64 * step) - 0.5));
             let tot = buy + sell;
@@ -1282,7 +1299,7 @@ fn footprint(ui: &mut Ui, f: &mut FlowPane, flow: &SharedFlow, rect: Rect, hover
     mini_chart(
         ui,
         cvd_r,
-        &format!("CVD · {} · bucket {}", g.symbol, fmt_price(step)),
+        &format!("CVD · {} · row {}", g.symbol, fmt_price(step)),
         &cvd,
         false,
         &|x| format!("{x:+.2}"),
@@ -1363,7 +1380,7 @@ fn predict(ui: &mut Ui, pp: &mut PredPane, markets: Option<&Result<Vec<Market>, 
                     widgets::hover_wash(ui, r, &resp, pp.selected.as_deref() == Some(m.id.as_str()));
                     let p = ui.painter_at(r);
                     let right = dp(150.0);
-                    let q = p.layout(m.question.clone(), ui_font(12.0), text(), (r.width() - right - 8.0).max(60.0));
+                    let q = one_line(&p, &m.question, ui_font(12.0), text(), (r.width() - right - 8.0).max(60.0));
                     p.galley(pos2(r.left() + 4.0, r.top() + 2.0), q, text());
                     let sub = [m.event.as_deref(), m.category.as_deref(), m.end_date.as_deref()]
                         .into_iter()

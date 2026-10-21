@@ -1,7 +1,8 @@
 //! Market-wide panes (data from `hd-flow`):
 //!
-//! - `WIRE`: the news wire: many crypto and macro feeds, coin chips, story tags (hack,
-//!   regulation, ETF, listing, macro…), important stories highlighted.
+//! - `WIRE`: the news terminal: a real-time tape of tweets, exchange listings and outlets with a
+//!   breaking-news banner, story tags, toasts for important headlines and, per coin, the move
+//!   since the headline arrived.
 //! - `CALLS`: KOL calls from X: coin, direction and levels from each post, move since the call
 //!   and a per-account scorecard.
 //! - `HLECO`: Hyperliquid at a glance: perps, HIP-3 DEXs, spot tokens, HLP, fees and revenue.
@@ -10,6 +11,7 @@
 //! - `SEASON`: average return by weekday × hour and by session.
 //! - `CALRT`: crypto alerts on price, change, funding, OI and liquidations.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -19,7 +21,7 @@ use hd_flow::fmt_usd;
 use hd_flow::hl_eco::Eco;
 use hd_flow::kol::{Call, KolSource, Side};
 use hd_flow::market::{Dashboard, Seasonality, WINDOWS};
-use hd_flow::news::Tag;
+use hd_flow::news::{Headline, Kind, Tag};
 
 use super::kit::*;
 use super::{PaneKind, TerminalApp};
@@ -35,6 +37,7 @@ pub struct WirePane {
     pub query: String,
     pub source: Option<String>,
     pub tag: Option<Tag>,
+    pub kind: Option<Kind>,
     pub important_only: bool,
     pub coin: Option<String>,
 }
@@ -95,6 +98,10 @@ pub struct AlertsPane {
 pub struct MarketData {
     pub wire: Option<SharedWire>,
     wire_requested: Option<Instant>,
+    /// When the wire's first batch arrived; headlines seen after that are "live".
+    wire_since: Option<Instant>,
+    /// Per headline link: when Hyperdesk first saw it and the coin prices at that moment.
+    pub news_marks: HashMap<String, NewsMark>,
     pub eco: Option<Result<Arc<Eco>, String>>,
     eco_at: Option<Instant>,
     pub market: Option<Result<Arc<Dashboard>, String>>,
@@ -105,6 +112,16 @@ pub struct MarketData {
     /// Newest liquidation already checked against the rules (Unix ms).
     liq_checked: i64,
     board_for_alerts: Option<Instant>,
+}
+
+/// What Hyperdesk knew when a headline first reached the wire.
+pub struct NewsMark {
+    pub seen: Instant,
+    /// Arrived while the wire was open (not part of the opening batch).
+    pub live: bool,
+    /// Coin prices when the headline was seen, for "move since the headline". Only recorded for
+    /// headlines under 15 minutes old, so the baseline is close to the news.
+    pub px: Vec<(String, f64)>,
 }
 
 fn alerts_path() -> std::path::PathBuf {
@@ -121,6 +138,7 @@ impl TerminalApp {
         let send = |r| self.worker.send(Request::Flow(r));
         if !any(&|k| matches!(k, PaneKind::Wire(_))) {
             m.wire = None;
+            m.wire_since = None;
         } else if m.wire.is_none() && m.wire_requested.is_none_or(|t| t.elapsed() > Duration::from_secs(10)) {
             m.wire_requested = Some(Instant::now());
             send(FlowRequest::Wire);
@@ -143,7 +161,7 @@ impl TerminalApp {
                 .unwrap_or_default();
         }
         // Alerts and KOL calls need fresh prices even when no derivatives pane is open.
-        let needs_board = !m.rules.is_empty() || shown(&|k| matches!(k, PaneKind::Kol(_)));
+        let needs_board = !m.rules.is_empty() || shown(&|k| matches!(k, PaneKind::Kol(_) | PaneKind::Wire(_)));
         if needs_board && m.board_for_alerts.is_none_or(|t| t.elapsed() > Duration::from_secs(30)) {
             m.board_for_alerts = Some(Instant::now());
             send(FlowRequest::Board);
@@ -163,6 +181,42 @@ impl TerminalApp {
             }
         }
         self.check_alerts();
+        self.mark_news();
+    }
+
+    /// Record first sight (and coin prices) for new headlines; toast the important live ones.
+    fn mark_news(&mut self) {
+        let Some(wire) = self.market.wire.clone() else { return };
+        let since = *self.market.wire_since.get_or_insert_with(Instant::now);
+        let Ok(w) = wire.lock() else { return };
+        let board = self.flow.board.clone();
+        let now = chrono::Utc::now().timestamp();
+        let mut toasts = Vec::new();
+        for h in w.items.iter().take(300) {
+            if self.market.news_marks.contains_key(&h.link) {
+                continue;
+            }
+            let live = since.elapsed() > Duration::from_secs(4);
+            let px = match board.as_deref() {
+                Some(b) if now - h.ts < 900 => h
+                    .coins
+                    .iter()
+                    .filter_map(|c| b.row(c).filter(|r| r.price > 0.0).map(|r| (c.clone(), r.price)))
+                    .collect(),
+                _ => Vec::new(),
+            };
+            if live && h.important() && toasts.len() < 3 {
+                toasts.push(super::chrome::ToastKind::News.msg(format!("{} · {}", who(h), h.title)));
+            }
+            self.market.news_marks.insert(h.link.clone(), NewsMark { seen: Instant::now(), live, px });
+        }
+        drop(w);
+        if self.market.news_marks.len() > 5_000 {
+            self.market.news_marks.retain(|_, m| m.seen.elapsed() < Duration::from_secs(6 * 3600));
+        }
+        for t in toasts {
+            self.toasts.push((t, Instant::now()));
+        }
     }
 
     /// Fire alert rules against the latest board and new liquidations.
@@ -186,7 +240,7 @@ impl TerminalApp {
         let fired = hd_flow::alerts::evaluate(&mut self.market.rules, board.as_deref(), &liqs, now);
         if !fired.is_empty() {
             for f in fired {
-                self.toasts.push((f.clone(), Instant::now()));
+                self.toasts.push((super::chrome::ToastKind::Alert.msg(&f), Instant::now()));
                 self.market.fired.insert(0, (now, f));
             }
             self.market.fired.truncate(200);
@@ -246,7 +300,7 @@ impl TerminalApp {
         let offline = self.provider.eq_ignore_ascii_case("sample") || hd_flow::offline();
         let board = self.flow.board.clone();
         match &mut self.panes[i].kind {
-            PaneKind::Wire(w) => wire(ui, w, self.market.wire.as_ref()),
+            PaneKind::Wire(w) => wire(ui, w, self.market.wire.as_ref(), &self.market.news_marks, board.as_deref()),
             PaneKind::Kol(k) => kol(ui, k, board.as_deref(), offline),
             PaneKind::Eco => eco(ui, self.market.eco.as_ref()),
             PaneKind::Market(m) => market(ui, m, self.market.market.as_ref()),
@@ -267,6 +321,7 @@ impl TerminalApp {
 
 fn tag_color(t: Tag) -> Color32 {
     match t {
+        Tag::Breaking => Color32::from_rgb(255, 92, 92),
         Tag::Hack => theme::down(),
         Tag::Regulation => Color32::from_rgb(186, 160, 255),
         Tag::Etf => theme::up(),
@@ -307,10 +362,51 @@ fn ago_secs(ts: i64) -> String {
 
 // ---- WIRE ----------------------------------------------------------------------------
 
-fn wire(ui: &mut Ui, w: &mut WirePane, data: Option<&SharedWire>) -> Vec<Action> {
+fn kind_color(k: Kind) -> Color32 {
+    match k {
+        Kind::Social => Color32::from_rgb(90, 170, 255),
+        Kind::Exchange => amber(),
+        Kind::News => muted(),
+        Kind::Official => Color32::from_rgb(186, 160, 255),
+    }
+}
+
+/// `@handle` from an author like `Name (@handle)`, else the author or the source.
+fn who(h: &Headline) -> String {
+    match &h.author {
+        Some(a) => a.find("(@").and_then(|i| a[i + 1..].strip_suffix(')')).unwrap_or(a).to_string(),
+        None => h.source.clone(),
+    }
+}
+
+/// Coin chip text and colour: the move since the headline when Hyperdesk saw it fresh,
+/// otherwise just the coin.
+fn coin_move(
+    coin: &str,
+    mark: Option<&NewsMark>,
+    board: Option<&hd_flow::perps::Board>,
+) -> (String, Color32, Option<f64>) {
+    let now = board.and_then(|b| b.row(coin)).map(|r| r.price).filter(|p| *p > 0.0);
+    let then = mark.and_then(|m| m.px.iter().find(|(c, _)| c == coin)).map(|(_, p)| *p);
+    match (then, now) {
+        (Some(a), Some(b)) => {
+            let d = b / a - 1.0;
+            (format!("{coin} {}", pct(d, 2)), signed(d), Some(d))
+        }
+        _ => (coin.to_string(), amber(), None),
+    }
+}
+
+fn wire(
+    ui: &mut Ui,
+    w: &mut WirePane,
+    data: Option<&SharedWire>,
+    marks: &HashMap<String, NewsMark>,
+    board: Option<&hd_flow::perps::Board>,
+) -> Vec<Action> {
     let mut actions = Vec::new();
     let Some(data) = data else {
-        title(ui, "NEWS WIRE");
+        title(ui, "NEWS");
         note(ui, "Connecting to the feeds…");
         return actions;
     };
@@ -318,125 +414,239 @@ fn wire(ui: &mut Ui, w: &mut WirePane, data: Option<&SharedWire>) -> Vec<Action>
     let mut sources: Vec<String> = wire.items.iter().map(|h| h.source.clone()).collect();
     sources.sort();
     sources.dedup();
-    ui.horizontal_wrapped(|ui| {
-        title(ui, "NEWS WIRE");
-        ui.add(egui::TextEdit::singleline(&mut w.query).hint_text("search").font(mono(12.0)).desired_width(130.0));
+    ui.horizontal(|ui| {
+        title(ui, "NEWS");
+        let pulse = 0.55 + 0.45 * ((ui.input(|i| i.time) * 2.5).sin() as f32).abs();
+        let (r, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
+        ui.painter().circle_filled(r.center(), 3.5, theme::up().gamma_multiply(pulse));
+        ui.label(RichText::new("LIVE").font(mono(10.5)).color(theme::up()));
+        let kinds = ["All", "X", "EXCH", "NEWS", "GOV"];
+        let cur = match w.kind {
+            None => 0,
+            Some(k) => 1 + Kind::ALL.iter().position(|x| *x == k).unwrap_or(0),
+        };
+        if let Some(i) = widgets::segmented(ui, "wire-kind", &kinds, Some(cur), 20.0) {
+            w.kind = if i == 0 { None } else { Some(Kind::ALL[i - 1]) };
+        }
         ui.checkbox(&mut w.important_only, RichText::new("Important").font(ui_font(11.5)));
-        if let Some(c) = w.coin.clone()
-            && chip(ui, &format!("{c} ✕"), amber()).clicked()
-        {
-            w.coin = None;
-        }
-        if wire.simulated {
-            simulated(ui, "headlines");
-        }
-        let ok = wire.status.values().filter(|r| r.is_ok()).count();
-        let bad: Vec<String> =
-            wire.status.iter().filter_map(|(k, r)| r.as_ref().err().map(|e| format!("{k}: {e}"))).collect();
-        if !wire.status.is_empty() {
-            let l = ui.label(
-                RichText::new(format!("{ok}/{} feeds", wire.status.len()))
-                    .font(ui_font(11.0))
-                    .color(if bad.is_empty() { muted() } else { amber() }),
-            );
-            if !bad.is_empty() {
-                l.on_hover_text(bad.join("\n"));
-            }
-        }
+        ui.add(
+            egui::TextEdit::singleline(&mut w.query)
+                .hint_text("search")
+                .font(mono(12.0))
+                .desired_width((ui.available_width() - dp(90.0)).clamp(dp(60.0), dp(160.0))),
+        );
     });
-    ui.horizontal_wrapped(|ui| {
-        if ui
-            .selectable_label(w.source.is_none() && w.tag.is_none(), RichText::new("All").font(ui_font(11.0)))
-            .clicked()
-        {
-            w.source = None;
-            w.tag = None;
-        }
-        for t in [Tag::Hack, Tag::Regulation, Tag::Etf, Tag::Listing, Tag::Macro, Tag::Hyperliquid, Tag::Funding] {
-            let on = w.tag == Some(t);
-            if ui.selectable_label(on, RichText::new(t.label()).font(mono(10.5)).color(tag_color(t))).clicked() {
-                w.tag = if on { None } else { Some(t) };
-            }
-        }
-        ui.separator();
-        for s in &sources {
-            let on = w.source.as_deref() == Some(s.as_str());
-            if ui.selectable_label(on, RichText::new(s).font(ui_font(10.5))).clicked() {
-                w.source = if on { None } else { Some(s.clone()) };
-            }
-        }
-    });
+    // Story tags and sources on one scrollable row.
+    egui::ScrollArea::horizontal()
+        .id_salt("wire-tags")
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if wire.simulated {
+                    simulated(ui, "headlines");
+                }
+                let ok = wire.status.values().filter(|r| r.is_ok()).count();
+                let bad: Vec<String> =
+                    wire.status.iter().filter_map(|(k, r)| r.as_ref().err().map(|e| format!("{k}: {e}"))).collect();
+                if !wire.status.is_empty() {
+                    let l = ui.label(
+                        RichText::new(format!("{ok}/{}", wire.status.len()))
+                            .font(mono(11.0))
+                            .color(if bad.is_empty() { muted() } else { amber() }),
+                    );
+                    l.on_hover_text(if bad.is_empty() {
+                        "All sources answering".to_string()
+                    } else {
+                        format!("Sources not answering:\n{}", bad.join("\n"))
+                    });
+                }
+                if let Some(c) = w.coin.clone()
+                    && chip(ui, &format!("{c} ✕"), amber()).clicked()
+                {
+                    w.coin = None;
+                }
+                for t in [
+                    Tag::Breaking,
+                    Tag::Listing,
+                    Tag::Hack,
+                    Tag::Regulation,
+                    Tag::Etf,
+                    Tag::Macro,
+                    Tag::Hyperliquid,
+                    Tag::Funding,
+                ] {
+                    let on = w.tag == Some(t);
+                    if ui.selectable_label(on, RichText::new(t.label()).font(mono(10.5)).color(tag_color(t))).clicked()
+                    {
+                        w.tag = if on { None } else { Some(t) };
+                    }
+                }
+                ui.separator();
+                for s in &sources {
+                    let on = w.source.as_deref() == Some(s.as_str());
+                    if ui.selectable_label(on, RichText::new(s).font(ui_font(10.5))).clicked() {
+                        w.source = if on { None } else { Some(s.clone()) };
+                    }
+                }
+            });
+        });
     let q = w.query.trim().to_lowercase();
-    let items: Vec<_> = wire
+    let items: Vec<Headline> = wire
         .items
         .iter()
+        .filter(|h| w.kind.is_none_or(|k| h.kind == k))
         .filter(|h| w.source.as_deref().is_none_or(|s| h.source == s))
         .filter(|h| w.tag.is_none_or(|t| h.tags.contains(&t)))
         .filter(|h| !w.important_only || h.important())
         .filter(|h| w.coin.as_deref().is_none_or(|c| h.coins.iter().any(|x| x == c)))
-        .filter(|h| q.is_empty() || h.title.to_lowercase().contains(&q))
-        .take(600)
+        .filter(|h| {
+            q.is_empty()
+                || h.title.to_lowercase().contains(&q)
+                || h.author.as_ref().is_some_and(|a| a.to_lowercase().contains(&q))
+        })
+        .take(500)
         .cloned()
         .collect();
     drop(wire);
     if items.is_empty() {
         note(ui, "No headlines match.");
+        return actions;
     }
+    let now = chrono::Utc::now().timestamp();
+
+    // Banner: the newest important story of the last 30 minutes, else the newest headline.
+    let lead = items.iter().find(|h| h.important() && now - h.ts < 1_800).unwrap_or(&items[0]);
+    {
+        let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), dp(66.0)), Sense::click());
+        let p = ui.painter_at(r);
+        let mark = marks.get(&lead.link);
+        let fresh = mark.filter(|m| m.live).map_or(1.0, |m| (m.seen.elapsed().as_secs_f32() / 10.0).min(1.0));
+        let accent = if lead.tags.contains(&Tag::Breaking) { tag_color(Tag::Breaking) } else { kind_color(lead.kind) };
+        p.rect_filled(r, 6.0, widgets::lerp_color(accent.gamma_multiply(0.35), theme::header(), fresh));
+        p.rect_filled(Rect::from_min_size(r.min, vec2(4.0, r.height())), 2.0, accent);
+        let meta = format!("{} · {} ago · {}", hms(lead.ts * 1000), ago_secs(lead.ts), who(lead));
+        p.text(pos2(r.left() + 12.0, r.top() + 10.0), Align2::LEFT_CENTER, meta, mono(10.5), muted());
+        let mut x = r.right() - 8.0;
+        for c in lead.coins.iter().take(4).rev() {
+            let (label, col, _) = coin_move(c, mark, board);
+            let g = p.layout_no_wrap(label, mono(11.5), col);
+            let cr = Rect::from_min_size(pos2(x - g.size().x - 10.0, r.top() + 3.0), g.size() + vec2(10.0, 4.0));
+            p.rect_filled(cr, 4.0, col.gamma_multiply(0.16));
+            p.galley(cr.min + vec2(5.0, 2.0), g, col);
+            x = cr.left() - 4.0;
+        }
+        let g = one_line_rows(&p, &lead.title, ui_font(15.0), text(), r.width() - 24.0, 2);
+        p.galley(pos2(r.left() + 12.0, r.top() + 20.0), g, text());
+        if resp.clicked() {
+            open_link(&lead.link);
+        }
+        resp.on_hover_text(format!("{}\n{}", lead.title, lead.link));
+    }
+    ui.add_space(dp(4.0));
+
+    // The tape: one dense row per headline, newest first.
+    let wide = ui.available_width() > dp(560.0);
     egui::ScrollArea::vertical().id_salt("wire").auto_shrink([false, false]).show(ui, |ui| {
         for h in &items {
-            let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), dp(38.0)), Sense::click());
-            widgets::hover_wash(ui, r, &resp, false);
+            let mark = marks.get(&h.link);
+            let width = ui.available_width();
+            let left_w = if wide { dp(62.0 + 44.0 + 104.0) } else { dp(62.0 + 44.0) };
+            let chips: Vec<(String, Color32, Option<f64>)> =
+                h.coins.iter().take(3).map(|c| coin_move(c, mark, board)).collect();
+            let chips_w: f32 = chips.iter().map(|(l, _, _)| l.len() as f32 * dp(7.2) + dp(14.0)).sum();
+            let title_w = (width - left_w - chips_w - dp(8.0)).max(dp(120.0));
+            let mut job = egui::text::LayoutJob::default();
+            for t in &h.tags {
+                job.append(
+                    t.label(),
+                    0.0,
+                    egui::TextFormat { font_id: mono(10.5), color: tag_color(*t), ..Default::default() },
+                );
+                job.append(" ", 0.0, egui::TextFormat { font_id: mono(10.5), ..Default::default() });
+            }
+            let title_col = if h.important() { text() } else { text().gamma_multiply(0.85) };
+            job.append(&h.title, 0.0, egui::TextFormat { font_id: ui_font(12.5), color: title_col, ..Default::default() });
+            job.wrap = egui::text::TextWrapping { max_width: title_w, max_rows: 2, break_anywhere: false, overflow_character: Some('…') };
+            let g = ui.painter().layout_job(job);
+            let row_h = g.size().y.max(dp(16.0)) + dp(7.0);
+            let (r, resp) = ui.allocate_exact_size(vec2(width, row_h), Sense::click());
+            if !ui.is_rect_visible(r) {
+                continue;
+            }
             let p = ui.painter_at(r);
+            let flash = mark.filter(|m| m.live).map(|m| 1.0 - (m.seen.elapsed().as_secs_f32() / 12.0).min(1.0));
+            if let Some(f) = flash.filter(|f| *f > 0.0) {
+                p.rect_filled(r, 2.0, kind_color(h.kind).gamma_multiply(0.22 * f));
+                ui.ctx().request_repaint();
+            }
+            widgets::hover_wash(ui, r, &resp, false);
             if h.important() {
-                p.rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 1.5, amber());
+                let c = if h.tags.contains(&Tag::Breaking) { tag_color(Tag::Breaking) } else { amber() };
+                p.rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 1.5, c);
             }
-            let left = r.left() + 10.0;
-            p.text(pos2(left, r.top() + 9.0), Align2::LEFT_CENTER, ago_secs(h.ts), mono(10.5), muted());
-            p.text(pos2(left + dp(34.0), r.top() + 9.0), Align2::LEFT_CENTER, &h.source, ui_font(10.5), muted());
-            let mut x = r.right() - 4.0;
-            for t in h.tags.iter().rev() {
-                let g = p.layout_no_wrap(t.label().to_string(), mono(9.5), tag_color(*t));
-                let tr = Rect::from_min_size(pos2(x - g.size().x - 8.0, r.top() + 2.0), g.size() + vec2(8.0, 3.0));
-                p.rect_filled(tr, 3.0, tag_color(*t).gamma_multiply(0.18));
-                p.galley(tr.min + vec2(4.0, 1.5), g, tag_color(*t));
-                x = tr.left() - 4.0;
+            let y = r.top() + dp(11.0);
+            let mut x = r.left() + dp(8.0);
+            p.text(pos2(x, y), Align2::LEFT_CENTER, hms(h.ts * 1000), mono(11.0), muted());
+            x += dp(62.0);
+            let kc = kind_color(h.kind);
+            let kr = Rect::from_min_size(pos2(x, y - dp(7.0)), vec2(dp(38.0), dp(14.0)));
+            p.rect_filled(kr, 3.0, kc.gamma_multiply(0.18));
+            p.text(kr.center(), Align2::CENTER_CENTER, h.kind.label(), mono(9.5), kc);
+            x += dp(44.0);
+            if wide {
+                let g = one_line(&p, &who(h), ui_font(11.0), muted(), dp(98.0));
+                p.galley(pos2(x, y - g.size().y / 2.0), g, muted());
+                x += dp(104.0);
             }
-            let color = if h.important() { text() } else { text().gamma_multiply(0.92) };
-            let g = p.layout(h.title.clone(), ui_font(12.5), color, r.width() - 20.0);
-            p.galley(pos2(left, r.top() + 17.0), g, color);
-            if resp.clicked()
-                && let Err(e) = crate::platform::open_external(&h.link)
-            {
-                tracing::warn!("opening {}: {e}", h.link);
-            }
-            resp.on_hover_text(format!("{} · open in browser", h.link));
-            if !h.coins.is_empty() {
-                ui.horizontal(|ui| {
-                    ui.add_space(10.0);
-                    for c in &h.coins {
-                        let r = chip(ui, c, amber()).on_hover_text("Filter the wire · right-click for more");
-                        if r.clicked() {
-                            w.coin = Some(c.clone());
-                        }
-                        r.context_menu(|ui| {
-                            for (label, cmd) in [
-                                ("Derivatives", format!("DERIV {c}")),
-                                ("Chart", format!("{c}USD CRNCY")),
-                                ("Heatmap", format!("HEAT {c}")),
-                            ] {
-                                if ui.button(label).clicked() {
-                                    actions.push(Action::Command(cmd));
-                                    ui.close();
-                                }
+            p.galley(pos2(x, r.top() + dp(3.0)), g, text());
+            let mut cx = r.right() - dp(4.0);
+            for (k, (label, col, _)) in chips.iter().enumerate().rev() {
+                let g = p.layout_no_wrap(label.clone(), mono(10.5), *col);
+                let cr = Rect::from_min_size(pos2(cx - g.size().x - dp(10.0), y - dp(8.0)), g.size() + vec2(dp(10.0), dp(4.0)));
+                let cresp = ui.interact(cr, ui.id().with(("wire-coin", &h.link, k)), Sense::click());
+                p.rect_filled(cr, 4.0, col.gamma_multiply(if cresp.hovered() { 0.32 } else { 0.16 }));
+                p.galley(cr.min + vec2(dp(5.0), dp(2.0)), g, *col);
+                let coin = h.coins[k].clone();
+                if cresp.clicked() {
+                    w.coin = Some(coin.clone());
+                }
+                cresp
+                    .on_hover_text("Click: filter the wire to this coin · right-click: open a chart. The % is the move since Hyperdesk saw the headline (prices refresh about every 30 s).")
+                    .context_menu(|ui| {
+                        for (label, cmd) in [
+                            ("Derivatives", format!("DERIV {coin}")),
+                            ("Chart", format!("{coin}USD CRNCY")),
+                            ("Heatmap", format!("HEAT {coin}")),
+                        ] {
+                            if ui.button(label).clicked() {
+                                actions.push(Action::Command(cmd));
+                                ui.close();
                             }
-                        });
-                    }
-                });
+                        }
+                    });
+                cx = cr.left() - dp(4.0);
             }
+            if resp.clicked() {
+                open_link(&h.link);
+            }
+            let byline = match &h.author {
+                Some(a) => format!("{a} · {}", h.source),
+                None => h.source.clone(),
+            };
+            resp.on_hover_text(format!("{}\n\n{byline} · {} ago\n{}", h.title, ago_secs(h.ts), h.link));
         }
     });
-    ui.ctx().request_repaint_after(Duration::from_secs(5));
+    ui.ctx().request_repaint_after(Duration::from_secs(1));
     actions
+}
+
+fn open_link(link: &str) {
+    if link.starts_with("http")
+        && !link.contains("example.invalid")
+        && let Err(e) = crate::platform::open_external(link)
+    {
+        tracing::warn!("opening {link}: {e}");
+    }
 }
 
 // ---- CALLS ---------------------------------------------------------------------------
@@ -1040,13 +1250,13 @@ fn alerts(
     board: Option<&hd_flow::perps::Board>,
 ) -> (Vec<Action>, bool) {
     let mut changed = false;
-    ui.horizontal_wrapped(|ui| {
-        title(ui, "CRYPTO ALERTS");
+    title(ui, "CRYPTO ALERTS");
+    ui.horizontal(|ui| {
         let r = ui.add(
             egui::TextEdit::singleline(&mut a.input)
                 .hint_text("BTC > 70k · SOL CHG > 8% · HYPE FUNDING > 0.05% · LIQ > 1M")
                 .font(mono(12.0))
-                .desired_width(320.0),
+                .desired_width((ui.available_width() - dp(60.0)).clamp(dp(140.0), dp(420.0))),
         );
         let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         if enter || ui.button(RichText::new("Add").font(ui_font(11.5))).clicked() {

@@ -585,15 +585,6 @@ impl ChartState {
                 });
             }
         }
-        if self.last_live.is_some_and(|t| t.elapsed().as_secs() < 5) {
-            // Pulsing live dot in the plot's top-right corner (clear of the price axis labels).
-            let pulse = 0.6 + 0.4 * ((ui.input(|i| i.time) * 3.0).sin() as f32).abs();
-            let c = pos2(rect.right() - AXIS_W + 12.0, header.bottom() + 10.0);
-            painter.circle_filled(c, 3.0, theme::up().gamma_multiply(pulse));
-            painter.text(c + vec2(7.0, 0.0), Align2::LEFT_CENTER, "LIVE", ui_font(10.0), theme::up());
-            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
-        }
-
         // Bottom quick-range row.
         let range_row = Rect::from_min_max(pos2(rect.left(), rect.bottom() - RANGE_H), rect.max);
         let mut rx = range_row.left() + 6.0;
@@ -624,13 +615,25 @@ impl ChartState {
                 if self.magnet { "  MAGNET" } else { "" }
             ),
         };
-        painter.text(
-            pos2(range_row.right() - 6.0, range_row.center().y),
-            Align2::RIGHT_CENTER,
-            status,
-            mono(10.5),
-            muted(),
-        );
+        let status_w = painter
+            .text(
+                pos2(range_row.right() - 6.0, range_row.center().y),
+                Align2::RIGHT_CENTER,
+                status,
+                mono(10.5),
+                muted(),
+            )
+            .width();
+        if self.last_live.is_some_and(|t| t.elapsed().as_secs() < 5) {
+            // Pulsing live dot in the bottom row, left of the bar count (clear of the price axis).
+            let pulse = 0.6 + 0.4 * ((ui.input(|i| i.time) * 3.0).sin() as f32).abs();
+            let c = pos2(range_row.right() - 6.0 - status_w - 44.0, range_row.center().y);
+            if c.x > rx + 8.0 {
+                painter.circle_filled(c, 3.0, theme::up().gamma_multiply(pulse));
+                painter.text(c + vec2(7.0, 0.0), Align2::LEFT_CENTER, "LIVE", ui_font(10.0), theme::up());
+            }
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+        }
 
         let body = Rect::from_min_max(pos2(rect.left(), header.bottom()), pos2(rect.right(), range_row.top()));
         let plot_all = Rect::from_min_max(body.min, pos2(body.right() - AXIS_W, body.bottom() - TIME_H));
@@ -902,18 +905,22 @@ impl ChartState {
             && tag_fade > 0.0
         {
             let y = price_rect.top() + scale.y_of(last.close) as f32;
-            if price_rect.y_range().contains(y) {
+            if y.is_finite() {
                 let col = if last.is_up() { theme::up() } else { theme::down() };
-                let mut xx = price_rect.left();
-                while xx < price_rect.right() {
-                    price_painter.hline(
-                        xx..=(xx + 3.0).min(price_rect.right()),
-                        y,
-                        Stroke::new(1.0, col.gamma_multiply(0.6 * tag_fade)),
-                    );
-                    xx += 6.0;
+                if price_rect.y_range().contains(y) {
+                    let mut xx = price_rect.left();
+                    while xx < price_rect.right() {
+                        price_painter.hline(
+                            xx..=(xx + 3.0).min(price_rect.right()),
+                            y,
+                            Stroke::new(1.0, col.gamma_multiply(0.6 * tag_fade)),
+                        );
+                        xx += 6.0;
+                    }
                 }
-                let tag = Rect::from_min_size(pos2(plot_all.right() + 1.0, y - 8.0), vec2(AXIS_W - 2.0, 16.0));
+                // Off-screen closes pin the tag to the top or bottom of the axis, as TradingView does.
+                let ty = y.clamp(price_rect.top() + 8.0, price_rect.bottom() - 8.0);
+                let tag = Rect::from_min_size(pos2(plot_all.right() + 1.0, ty - 8.0), vec2(AXIS_W - 2.0, 16.0));
                 axis_painter.rect_filled(tag, 0.0, col.gamma_multiply(tag_fade));
                 axis_painter.text(
                     tag.left_center() + vec2(5.0, 0.0),
@@ -1092,19 +1099,33 @@ impl ChartState {
         let chg = b.close - prev;
         let col = if chg >= 0.0 { theme::up() } else { theme::down() };
         let dec = self.sec.decimals(b.close);
-        let mut x = price_rect.left() + 6.0;
-        let y = price_rect.top() + 4.0;
-        let put = |text: String, color: Color32, x: &mut f32| {
-            let g = p.layout_no_wrap(text, mono(11.5), color);
-            p.galley(pos2(*x, y), g.clone(), color);
-            *x += g.size().x + 8.0;
+        // TradingView-style legend: muted field names, values in the bar's colour, wrapping onto a
+        // second line instead of running under the price axis in narrow panes.
+        let left = price_rect.left() + 6.0;
+        let right = price_rect.right() - 6.0;
+        let mut x = left;
+        let mut y = price_rect.top() + 4.0;
+        let put = |parts: &[(String, Color32)], x: &mut f32, y: &mut f32| {
+            let gs: Vec<_> = parts.iter().map(|(t, c)| p.layout_no_wrap(t.clone(), mono(11.5), *c)).collect();
+            let w: f32 = gs.iter().map(|g| g.size().x + 2.0).sum();
+            if *x > left && *x + w > right {
+                *x = left;
+                *y += 15.0;
+            }
+            for g in gs {
+                let gw = g.size().x;
+                p.galley(pos2(*x, *y), g, text());
+                *x += gw + 2.0;
+            }
+            *x += 8.0;
         };
-        put(format!("{} · {}", self.sec.ticker, self.tf), amber(), &mut x);
+        put(&[(format!("{} · {}", self.sec.ticker, self.tf), amber())], &mut x, &mut y);
         for (k, val) in [("O", b.open), ("H", b.high), ("L", b.low), ("C", b.close)] {
-            put(format!("{k}{val:.dec$}"), col, &mut x);
+            put(&[(k.to_string(), muted()), (format!("{val:.dec$}"), col)], &mut x, &mut y);
         }
-        put(format!("{:+.dec$} ({:+.2}%)", chg, if prev != 0.0 { chg / prev * 100.0 } else { 0.0 }), col, &mut x);
-        put(format!("Vol {}", scale::format_volume(b.volume)), muted(), &mut x);
+        let pct = if prev != 0.0 { chg / prev * 100.0 } else { 0.0 };
+        put(&[(format!("{chg:+.dec$} ({pct:+.2}%)"), col)], &mut x, &mut y);
+        put(&[("Vol".to_string(), muted()), (scale::format_volume(b.volume), text())], &mut x, &mut y);
 
         // Overlay indicator values, one per line.
         let mut ly = y + 16.0;

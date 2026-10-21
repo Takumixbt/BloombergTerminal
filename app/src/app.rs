@@ -458,6 +458,7 @@ impl PaneKind {
             query: String::new(),
             source: None,
             tag: None,
+            kind: None,
             important_only: false,
             coin: coin.map(|c| hd_flow::venue::coin_of_key(&c)),
         }))
@@ -849,15 +850,17 @@ impl TerminalApp {
         let first_run = app.store.list().is_empty();
         let doc = doc
             .or_else(|| app.store.list().first().and_then(|n| app.store.load(n).ok()))
-            .unwrap_or_else(|| LayoutDoc::default_workspace("Default", &app.prefs.panels));
+            // New installs open on the crypto desk; the classic equities desk stays one click away.
+            .unwrap_or_else(|| LayoutDoc::crypto_workspace(&app.prefs.panels));
         app.apply_doc(doc);
         if !app.store.exists(&app.layout_name) {
             app.save_layout();
         }
-        // New installs also get ready-made crypto workspaces (`LAYOUT Crypto Desk`,
-        // `LAYOUT Hyperliquid Desk`).
+        // New installs also get the other ready-made workspaces (`LAYOUT Default`,
+        // `LAYOUT Hyperliquid Desk`, `LAYOUT Market Desk`).
         if first_run {
             for doc in [
+                LayoutDoc::default_workspace("Default", &app.prefs.panels),
                 LayoutDoc::crypto_workspace(&app.prefs.panels),
                 LayoutDoc::hyperliquid_workspace(),
                 LayoutDoc::market_workspace(),

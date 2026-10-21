@@ -332,8 +332,8 @@ impl LayoutDoc {
     /// Name of the built-in crypto workspace, created on first launch.
     pub const CRYPTO_DESK: &'static str = "Crypto Desk";
 
-    /// BTC chart, derivatives board, book heatmap, footprint, liquidations and prediction
-    /// markets; the chart, heatmap and footprint share the blue link group.
+    /// BTC chart, book heatmap, derivatives board, footprint, liquidations and the news
+    /// terminal; the chart, heatmap and footprint share the blue link group.
     pub fn crypto_workspace(defaults: &crate::prefs::PanelDefaults) -> LayoutDoc {
         let flow =
             |view| PaneSettings::Flow { coin: "BTC".into(), venue: hd_flow::Exchange::Binance, view, tf_secs: 60 };
@@ -343,7 +343,7 @@ impl LayoutDoc {
             PaneSettings::Deriv { coin: None, apr: false },
             flow(crate::app::FlowView::Footprint),
             PaneSettings::Liquidations { coin: None, min_usd: 0.0 },
-            PaneSettings::Predict { query: String::new() },
+            PaneSettings::Wire,
         ];
         let mut doc = Self::preset(Self::CRYPTO_DESK, Layout::Grid3x2, panes);
         for p in doc
@@ -376,11 +376,12 @@ impl LayoutDoc {
     /// Name of the built-in market workspace, created on first launch.
     pub const MARKET_DESK: &'static str = "Market Desk";
 
-    /// Market dashboard, news wire, KOL calls, Hyperliquid ecosystem, seasonality and alerts.
+    /// Market dashboard, prediction markets, KOL calls, Hyperliquid ecosystem, seasonality and
+    /// alerts.
     pub fn market_workspace() -> LayoutDoc {
         let panes = vec![
             PaneSettings::Market { view: crate::app::MarketView::Heatmap, window: 2 },
-            PaneSettings::Wire,
+            PaneSettings::Predict { query: String::new() },
             PaneSettings::Kol { sources: Vec::new() },
             PaneSettings::Eco,
             PaneSettings::Season { coin: "BTC".into() },

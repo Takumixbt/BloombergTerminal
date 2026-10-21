@@ -583,36 +583,77 @@ pub async fn run_option_flow(tape: Arc<std::sync::Mutex<crate::options_flow::Tap
 
 // ---- News, KOL calls, ecosystem, market dashboard ----------------------------------
 
+/// Simulated headlines. Sources and accounts are fictional so the demo never puts words in a
+/// real outlet's mouth.
+const SAMPLE_NEWS: [(crate::news::Kind, &str, &str); 24] = {
+    use crate::news::Kind::{Exchange, News, Official, Social};
+    [
+        (Social, "Sim Wire (@sim_wire)", "JUST IN: $BTC spot ETFs record $640M of net inflows today"),
+        (Exchange, "CEX Notices", "New listing: HYPEUSDT perpetual contract with up to 25x leverage"),
+        (News, "Chain Daily", "Hyperliquid HIP-3 markets top $1B in open interest as builders add equities"),
+        (Official, "Central Bank", "FOMC statement: Committee holds the target range, signals patience on cuts"),
+        (Social, "Sim Flows (@sim_flows)", "Whale opens $48M $ETH long on Hyperliquid at 2,561"),
+        (News, "Block Report", "DeFi lending protocol drained of $12M in oracle exploit"),
+        (Official, "Regulator", "Regulator delays decision on Solana ETF applications"),
+        (Social, "Sim Macro (@sim_macro)", "BREAKING: US CPI comes in at 2.4% vs 2.6% expected"),
+        (Exchange, "CEX Notices", "Notice on delisting of three spot trading pairs"),
+        (News, "Ledger Times", "Ethena raises $100M at a $3B valuation"),
+        (Social, "Sim Wire (@sim_wire)", "$SOL network upgrade goes live, fees down 40%"),
+        (News, "Chain Daily", "Ether options traders pile into December $3,000 calls"),
+        (Exchange, "DEX Notices", "Pre-market trading opens for a new token, launchpool starts tomorrow"),
+        (Social, "Sim Flows (@sim_flows)", "$XRP open interest falls 12% as funding flips negative"),
+        (News, "Block Report", "Miners send 15,000 BTC to exchanges in a week"),
+        (Social, "Sim Wire (@sim_wire)", "JUST IN: $DOGE jumps 9% as meme coins rally"),
+        (News, "Ledger Times", "Stablecoin supply reaches a record $310B"),
+        (Social, "Sim Macro (@sim_macro)", "Treasury yields slip after weaker jobs report"),
+        (Exchange, "CEX Notices", "Will list $LINK and $AVAX margin pairs"),
+        (Social, "Sim Flows (@sim_flows)", "$PEPE whale moves 2T tokens to an exchange"),
+        (News, "Chain Daily", "HyperEVM upgrade lowers gas and adds new precompiles"),
+        (Official, "Regulator", "Regulator charges promoters of unregistered crypto offering"),
+        (Social, "Sim Wire (@sim_wire)", "BREAKING: $ETH ETF options approved"),
+        (News, "Block Report", "Bitcoin climbs past $67K as ETF inflows hit two-week high"),
+    ]
+};
+
+fn sample_headline(k: usize, ts: i64, uni: &std::collections::HashSet<String>) -> crate::news::Headline {
+    let (kind, who, text) = SAMPLE_NEWS[k % SAMPLE_NEWS.len()];
+    let social = kind == crate::news::Kind::Social;
+    let source = if social { "X" } else { who };
+    let mut h = crate::news::Headline::new(
+        text.into(),
+        source,
+        format!("https://example.invalid/news/{k}"),
+        ts,
+        kind,
+        &[],
+        uni,
+    );
+    h.author = social.then(|| who.to_string());
+    h
+}
+
+/// The wire's opening batch: the last few hours, newest first.
 pub fn news(now: i64) -> Vec<crate::news::Headline> {
-    let heads = [
-        ("CoinDesk", "Bitcoin climbs past $67K as spot ETF inflows hit two-week high"),
-        ("The Block", "Hyperliquid HIP-3 markets top $1B in open interest as builders add equities"),
-        ("Federal Reserve", "FOMC statement: Committee holds the target range, signals patience on cuts"),
-        ("Decrypt", "DeFi lending protocol drained of $12M in oracle exploit"),
-        ("Cointelegraph", "SEC delays decision on Solana ETF applications"),
-        ("Blockworks", "Ethena raises $100M at a $3B valuation"),
-        ("CoinDesk", "Ether options traders pile into December $3,000 calls"),
-        ("The Block", "Binance to list two new perpetual contracts with up to 50x leverage"),
-        ("CryptoSlate", "XRP open interest falls 12% as funding flips negative"),
-        ("Bitcoin Magazine", "Miners send 15,000 BTC to exchanges in a week"),
-        ("Hyperliquid", "HyperEVM upgrade lowers gas and adds new precompiles"),
-        ("SEC", "SEC charges promoters of unregistered crypto offering"),
-        ("Decrypt", "Dogecoin jumps 9% as meme coins rally"),
-        ("CoinDesk", "Stablecoin supply reaches a record $310B"),
-    ];
     let uni: std::collections::HashSet<String> = COINS.iter().map(|c| c.0.to_string()).collect();
-    heads
-        .iter()
-        .enumerate()
-        .map(|(k, (src, t))| crate::news::Headline {
-            title: (*t).into(),
-            source: (*src).into(),
-            link: format!("https://example.invalid/news/{k}"),
-            ts: now - k as i64 * 1_740,
-            coins: crate::news::coins_in(t, &uni),
-            tags: crate::news::classify(t),
-        })
-        .collect()
+    (0..14).map(|k| sample_headline(k + 10, now - 90 - k as i64 * 640, &uni)).collect()
+}
+
+/// Drip a new simulated headline onto the wire every ~20 s so the tape feels live offline.
+pub async fn run_wire(wire: Arc<std::sync::Mutex<crate::news::Wire>>) {
+    let uni: std::collections::HashSet<String> = COINS.iter().map(|c| c.0.to_string()).collect();
+    let mut k = 0usize;
+    while Arc::strong_count(&wire) > 1 {
+        tokio::time::sleep(Duration::from_secs(if k < 2 { 6 } else { 20 })).await;
+        if let Ok(mut w) = wire.lock() {
+            let mut h = sample_headline(k, chrono::Utc::now().timestamp(), &uni);
+            // Unique link per drip so repeats of the list still land on the wire.
+            h.link = format!("https://example.invalid/news/live-{k}");
+            h.title =
+                if k >= SAMPLE_NEWS.len() { format!("{} ({})", h.title, k / SAMPLE_NEWS.len() + 1) } else { h.title };
+            w.merge(vec![h]);
+        }
+        k += 1;
+    }
 }
 
 pub fn kol_posts(now: i64) -> Vec<crate::kol::Post> {

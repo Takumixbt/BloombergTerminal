@@ -69,3 +69,23 @@ async fn hyperliquid_wallets_leaderboard_and_options_flow() {
     let trades = hd_flow::options_flow::fetch(&http, "BTC").await.unwrap();
     assert!(!trades.is_empty());
 }
+
+#[tokio::test]
+#[ignore]
+async fn news_sources_parse() {
+    // Every default news source should answer and parse; prints what each returned so a changed
+    // format is easy to spot.
+    let http = Http::new().unwrap();
+    let universe: std::collections::HashSet<String> = ["BTC", "ETH", "SOL"].iter().map(|s| s.to_string()).collect();
+    let mut ok = 0;
+    for feed in hd_flow::news::default_feeds() {
+        match hd_flow::news::fetch_feed(&http, &feed, &universe).await {
+            Ok(items) => {
+                println!("{:<16} {:>4} items  {:?}", feed.name, items.len(), items.first().map(|h| &h.title));
+                ok += usize::from(!items.is_empty());
+            }
+            Err(e) => println!("{:<16} ERROR {e:#}", feed.name),
+        }
+    }
+    assert!(ok >= hd_flow::news::DEFAULT_FEEDS.len() / 2, "most news sources should work");
+}

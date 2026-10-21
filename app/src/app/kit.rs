@@ -146,21 +146,56 @@ pub(super) fn grid(rect: Rect, n: usize, min_w: f32, h: f32) -> Vec<Rect> {
         .collect()
 }
 
-/// Bookmap-style ramp: deep blue → cyan → yellow → white.
+/// Bookmap-style ramp: near-black navy → blue → cyan → amber → white-hot. Typical liquidity sits
+/// in the dark first half so walls stand out.
 pub(super) fn heat_color(t: f32) -> Color32 {
     let t = t.clamp(0.0, 1.0);
-    let stops: [(f32, [f32; 3]); 5] = [
+    let stops: [(f32, [f32; 3]); 6] = [
         (0.0, [8.0, 10.0, 30.0]),
-        (0.25, [20.0, 60.0, 140.0]),
-        (0.5, [0.0, 190.0, 210.0]),
-        (0.8, [250.0, 220.0, 40.0]),
+        (0.2, [12.0, 28.0, 78.0]),
+        (0.45, [16.0, 96.0, 170.0]),
+        (0.65, [0.0, 200.0, 210.0]),
+        (0.85, [250.0, 200.0, 40.0]),
         (1.0, [255.0, 255.0, 255.0]),
     ];
-    let k = stops.iter().position(|s| s.0 >= t).unwrap_or(4).max(1);
+    let k = stops.iter().position(|s| s.0 >= t).unwrap_or(stops.len() - 1).max(1);
     let (a, b) = (stops[k - 1], stops[k]);
     let u = (t - a.0) / (b.0 - a.0).max(1e-6);
     let c = |i: usize| (a.1[i] + (b.1[i] - a.1[i]) * u) as u8;
     Color32::from_rgb(c(0), c(1), c(2))
+}
+
+/// `text` wrapped to at most `rows` lines of `max_w`, the last cut with an ellipsis.
+pub(super) fn one_line_rows(
+    p: &egui::Painter,
+    text: &str,
+    font: egui::FontId,
+    color: Color32,
+    max_w: f32,
+    rows: usize,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple(text.to_string(), font, color, max_w.max(10.0));
+    job.wrap.max_rows = rows;
+    job.wrap.overflow_character = Some('…');
+    p.layout_job(job)
+}
+
+/// `text` laid out on one line, cut with an ellipsis at `max_w`.
+pub(super) fn one_line(
+    p: &egui::Painter,
+    text: &str,
+    font: egui::FontId,
+    color: Color32,
+    max_w: f32,
+) -> std::sync::Arc<egui::Galley> {
+    let mut job = egui::text::LayoutJob::simple_singleline(text.to_string(), font, color);
+    job.wrap = egui::text::TextWrapping {
+        max_width: max_w.max(10.0),
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    p.layout_job(job)
 }
 
 pub(super) fn signed_usd(x: f64) -> String {
@@ -192,16 +227,17 @@ pub(super) fn ago(ms: i64) -> String {
     }
 }
 
-/// A painted table row: `cells` are `(text, colour, right-aligned)` at fixed widths.
+/// A painted table row: `cells` are `(text, colour, right-aligned)` at fixed widths. When the pane
+/// is narrower than the columns, they shrink a little, trailing columns that still do not fit are
+/// left out, and each cell clips its text instead of spilling into its neighbour.
 pub(super) fn row(ui: &mut Ui, widths: &[f32], cells: &[(String, Color32, bool)], header: bool) -> egui::Response {
     let s = dp(1.0);
     let total: f32 = widths.iter().map(|w| w * s).sum();
+    let avail = ui.available_width();
+    let s = if total > avail && total > 0.0 { s * (avail / total).max(0.85) } else { s };
     let h = dp(19.0);
-    let (r, resp) = ui.allocate_exact_size(
-        vec2(total.max(ui.available_width()), h),
-        if header { Sense::hover() } else { Sense::click() },
-    );
-    let p = ui.painter();
+    let (r, resp) = ui.allocate_exact_size(vec2(avail, h), if header { Sense::hover() } else { Sense::click() });
+    let p = ui.painter_at(r);
     if header {
         p.rect_filled(r, 3.0, theme::header());
     } else {
@@ -209,12 +245,21 @@ pub(super) fn row(ui: &mut Ui, widths: &[f32], cells: &[(String, Color32, bool)]
     }
     let mut x = r.left();
     for (k, (t, c, right)) in cells.iter().enumerate() {
+        if x >= r.right() {
+            break;
+        }
         let w = widths.get(k).copied().unwrap_or(60.0) * s;
+        if k > 0 && x + w > r.right() + 1.0 {
+            // A column that does not fit is left out rather than shown half-cut.
+            break;
+        }
+        let cell = Rect::from_min_max(pos2(x, r.top()), pos2((x + w).min(r.right()), r.bottom()));
+        let cp = p.with_clip_rect(cell.shrink2(vec2(2.0, 0.0)));
         let font = if header { ui_font(11.0) } else { mono(12.0) };
         if *right {
-            p.text(pos2(x + w - 6.0, r.center().y), Align2::RIGHT_CENTER, t, font, *c);
+            cp.text(pos2(cell.right() - 6.0, r.center().y), Align2::RIGHT_CENTER, t, font, *c);
         } else {
-            p.text(pos2(x + 6.0, r.center().y), Align2::LEFT_CENTER, t, font, *c);
+            cp.text(pos2(x + 6.0, r.center().y), Align2::LEFT_CENTER, t, font, *c);
         }
         x += w;
     }

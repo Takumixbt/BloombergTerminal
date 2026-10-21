@@ -1,6 +1,7 @@
-//! The news wire: headlines from many crypto and macro RSS/Atom feeds merged into one tape,
-//! each tagged with the coins it mentions and what kind of story it is (hack, regulation,
-//! ETF, listing, macro…), so the important ones stand out.
+//! The news wire: a real-time tape of tweets and exchange announcements (Tree of Alpha's
+//! public feed, Binance, Bybit and OKX listing notices) merged with crypto and macro RSS/Atom
+//! outlets, each headline tagged with the coins it mentions and what kind of story it is
+//! (breaking, hack, regulation, ETF, listing, macro…), so the important ones stand out.
 //!
 //! Feeds are configurable (`news_feeds.json` in the data folder); [`DEFAULT_FEEDS`] is used
 //! when that file does not exist.
@@ -12,28 +13,109 @@ use serde::{Deserialize, Serialize};
 
 use crate::Http;
 
+/// Where a headline came from; the wire colours and filters by it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum Kind {
+    /// News outlets.
+    #[default]
+    News,
+    /// Posts on X.
+    Social,
+    /// Exchange announcements (listings, delistings, launches).
+    Exchange,
+    /// Central banks and regulators.
+    Official,
+}
+
+impl Kind {
+    pub const ALL: [Kind; 4] = [Kind::Social, Kind::Exchange, Kind::News, Kind::Official];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Kind::News => "NEWS",
+            Kind::Social => "X",
+            Kind::Exchange => "EXCH",
+            Kind::Official => "GOV",
+        }
+    }
+}
+
+/// How a feed is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Format {
+    /// RSS 2.0 or Atom.
+    #[default]
+    Rss,
+    /// `news.treeofalpha.com/api/news`: tweets and announcements as JSON.
+    TreeOfAlpha,
+    /// Bybit `v5/announcements/index`.
+    Bybit,
+    /// OKX `api/v5/support/announcements`.
+    Okx,
+    /// Binance's announcement list (`bapi/composite/v1/public/cms/article/list/query`).
+    Binance,
+}
+
+impl Format {
+    /// Seconds between polls: real-time sources often, outlets politely.
+    pub fn interval_secs(self) -> u64 {
+        match self {
+            Format::TreeOfAlpha => 15,
+            Format::Bybit | Format::Okx | Format::Binance => 60,
+            Format::Rss => 90,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Feed {
     pub name: String,
     pub url: String,
+    #[serde(default)]
+    pub format: Format,
+    /// Overrides the kind implied by the format (e.g. `Official` for a central bank's RSS).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<Kind>,
 }
 
-/// Public feeds used when no `news_feeds.json` exists.
-pub const DEFAULT_FEEDS: [(&str, &str); 10] = [
-    ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
-    ("Cointelegraph", "https://cointelegraph.com/rss"),
-    ("The Block", "https://www.theblock.co/rss.xml"),
-    ("Decrypt", "https://decrypt.co/feed"),
-    ("Blockworks", "https://blockworks.co/feed"),
-    ("Bitcoin Magazine", "https://bitcoinmagazine.com/.rss/full/"),
-    ("CryptoSlate", "https://cryptoslate.com/feed/"),
-    ("Hyperliquid", "https://medium.com/feed/@hyperliquid"),
-    ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml"),
-    ("SEC", "https://www.sec.gov/news/pressreleases.rss"),
+impl Feed {
+    pub fn kind(&self) -> Kind {
+        self.kind.unwrap_or(match self.format {
+            Format::Bybit | Format::Okx | Format::Binance => Kind::Exchange,
+            Format::Rss | Format::TreeOfAlpha => Kind::News,
+        })
+    }
+}
+
+/// Public feeds used when no `news_feeds.json` exists: real-time sources first.
+pub const DEFAULT_FEEDS: [(&str, &str, Format, Option<Kind>); 14] = [
+    ("Tree News", "https://news.treeofalpha.com/api/news?limit=100", Format::TreeOfAlpha, None),
+    (
+        "Binance",
+        "https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&pageNo=1&pageSize=20",
+        Format::Binance,
+        None,
+    ),
+    ("Bybit", "https://api.bybit.com/v5/announcements/index?locale=en-US&limit=20", Format::Bybit, None),
+    ("OKX", "https://www.okx.com/api/v5/support/announcements", Format::Okx, None),
+    ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/", Format::Rss, None),
+    ("Cointelegraph", "https://cointelegraph.com/rss", Format::Rss, None),
+    ("The Block", "https://www.theblock.co/rss.xml", Format::Rss, None),
+    ("Decrypt", "https://decrypt.co/feed", Format::Rss, None),
+    ("Blockworks", "https://blockworks.co/feed", Format::Rss, None),
+    ("Bitcoin Magazine", "https://bitcoinmagazine.com/.rss/full/", Format::Rss, None),
+    ("CryptoSlate", "https://cryptoslate.com/feed/", Format::Rss, None),
+    ("Hyperliquid", "https://medium.com/feed/@hyperliquid", Format::Rss, None),
+    ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml", Format::Rss, Some(Kind::Official)),
+    ("SEC", "https://www.sec.gov/news/pressreleases.rss", Format::Rss, Some(Kind::Official)),
 ];
 
 pub fn default_feeds() -> Vec<Feed> {
-    DEFAULT_FEEDS.iter().map(|(n, u)| Feed { name: (*n).into(), url: (*u).into() }).collect()
+    DEFAULT_FEEDS
+        .iter()
+        .map(|(n, u, format, kind)| Feed { name: (*n).into(), url: (*u).into(), format: *format, kind: *kind })
+        .collect()
 }
 
 /// Read `news_feeds.json` (`[{"name","url"}]`), or the defaults when it is missing or invalid.
@@ -47,6 +129,7 @@ pub fn load_feeds(path: &std::path::Path) -> Vec<Feed> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Tag {
+    Breaking,
     Hack,
     Regulation,
     Etf,
@@ -60,6 +143,7 @@ pub enum Tag {
 impl Tag {
     pub fn label(self) -> &'static str {
         match self {
+            Tag::Breaking => "BREAKING",
             Tag::Hack => "HACK",
             Tag::Regulation => "REG",
             Tag::Etf => "ETF",
@@ -73,10 +157,11 @@ impl Tag {
 
     /// Stories that move markets get highlighted.
     pub fn important(self) -> bool {
-        matches!(self, Tag::Hack | Tag::Regulation | Tag::Etf | Tag::Listing | Tag::Macro)
+        matches!(self, Tag::Breaking | Tag::Hack | Tag::Regulation | Tag::Etf | Tag::Listing | Tag::Macro)
     }
 
-    const KEYWORDS: [(Tag, &'static [&'static str]); 8] = [
+    const KEYWORDS: [(Tag, &'static [&'static str]); 9] = [
+        (Tag::Breaking, &["breaking", "just in", "🚨", "urgent:"]),
         (Tag::Hack, &["hack", "exploit", "drained", "stolen", "breach", "attacker", "rug pull", "rugpull", "phishing"]),
         (
             Tag::Regulation,
@@ -98,7 +183,21 @@ impl Tag {
             ],
         ),
         (Tag::Etf, &["etf", "exchange-traded"]),
-        (Tag::Listing, &["listing", "lists ", "listed", "delist", "launchpool", "airdrop", "tge"]),
+        (
+            Tag::Listing,
+            &[
+                "listing",
+                "lists ",
+                "listed",
+                "will list",
+                "delist",
+                "launchpool",
+                "airdrop",
+                "tge",
+                "perpetual contract",
+                "pre-market",
+            ],
+        ),
         (
             Tag::Macro,
             &[
@@ -203,9 +302,43 @@ pub struct Headline {
     pub ts: i64,
     pub coins: Vec<String>,
     pub tags: Vec<Tag>,
+    #[serde(default)]
+    pub kind: Kind,
+    /// Who posted it (X account, byline), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
 }
 
 impl Headline {
+    /// Build a headline, tagging coins and story kinds from `title` (plus any `extra_coins` the
+    /// source already identified).
+    pub fn new(
+        title: String,
+        source: &str,
+        link: String,
+        ts: i64,
+        kind: Kind,
+        extra_coins: &[String],
+        universe: &HashSet<String>,
+    ) -> Self {
+        let mut coins: Vec<String> = Vec::new();
+        for c in extra_coins.iter().cloned().chain(coins_in(&title, universe)) {
+            if !coins.contains(&c) {
+                coins.push(c);
+            }
+        }
+        coins.truncate(6);
+        let mut tags = classify(&title);
+        if kind == Kind::Exchange && !tags.contains(&Tag::Listing) {
+            let t = title.to_lowercase();
+            if ["list", "launch", "perpetual", "pre-market", "futures"].iter().any(|w| t.contains(w)) {
+                tags.push(Tag::Listing);
+                tags.sort();
+            }
+        }
+        Headline { title, source: source.to_string(), link, ts, coins, tags, kind, author: None }
+    }
+
     pub fn important(&self) -> bool {
         self.tags.iter().any(|t| t.important())
     }
@@ -324,15 +457,183 @@ pub fn parse_feed(xml: &str) -> Result<Vec<Entry>> {
 pub fn headlines(xml: &str, source: &str, universe: &HashSet<String>) -> Result<Vec<Headline>> {
     Ok(parse_feed(xml)?
         .into_iter()
-        .map(|e| Headline {
-            coins: coins_in(&e.title, universe),
-            tags: classify(&e.title),
-            title: e.title,
-            source: source.to_string(),
-            link: e.link,
-            ts: e.ts,
+        .map(|e| {
+            let mut h = Headline::new(e.title, source, e.link, e.ts, Kind::News, &[], universe);
+            h.author = e.author;
+            h
         })
         .collect())
+}
+
+/// A ticker-like coin symbol from a source's symbol field (`BTC`, `BTC_USDT`, `BTCUSDT`, `1000PEPE`).
+fn coin_symbol(raw: &str) -> Option<String> {
+    let s = raw.trim().to_ascii_uppercase();
+    let s = s.split(['_', '-', '/', ':']).next().unwrap_or(&s).to_string();
+    let s = ["USDT", "USDC", "PERP"].iter().find_map(|q| s.strip_suffix(q).filter(|b| b.len() >= 2)).unwrap_or(&s);
+    let s = s.trim_start_matches("1000");
+    (s.len() >= 2 && s.len() <= 10 && s.chars().all(|c| c.is_ascii_alphanumeric())).then(|| s.to_string())
+}
+
+fn ms_or_secs(v: &serde_json::Value) -> Option<i64> {
+    let n = v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok()))?;
+    Some(if n > 1e11 { (n / 1000.0) as i64 } else { n as i64 })
+}
+
+const EXCHANGES: [&str; 10] =
+    ["binance", "bybit", "okx", "coinbase", "upbit", "bithumb", "kraken", "bitget", "robinhood", "hyperliquid"];
+
+/// Tree of Alpha's public news API: an array of tweets (`title` = account, `body` = text,
+/// `link`) and announcements/articles (`title`, `source`, `url`), with `time` in milliseconds
+/// and `suggestions[].coin` for the coins it detected. Unknown or malformed items are skipped.
+pub fn parse_tree(json: &str, universe: &HashSet<String>) -> Result<Vec<Headline>> {
+    let items: Vec<serde_json::Value> = serde_json::from_str(json)?;
+    fn s<'a>(v: &'a serde_json::Value, k: &str) -> Option<&'a str> {
+        v.get(k).and_then(|x| x.as_str()).map(str::trim).filter(|x| !x.is_empty())
+    }
+    let mut out = Vec::new();
+    for it in &items {
+        let body = s(it, "body").map(clean);
+        let title = s(it, "title").map(clean);
+        let link = s(it, "url").or_else(|| s(it, "link")).map(str::to_string);
+        let Some(ts) = it.get("time").and_then(ms_or_secs) else { continue };
+        let tweet = it.get("info").and_then(|i| i.get("twitterId")).is_some()
+            || link.as_deref().is_some_and(|l| l.contains("twitter.com/") || l.contains("x.com/"));
+        let (text, author) = match (body.filter(|b| !b.is_empty()), title) {
+            (Some(b), t) => (b, t),
+            (None, Some(t)) => (s(it, "en").map(clean).unwrap_or(t), None),
+            (None, None) => continue,
+        };
+        let source = s(it, "source").map(str::to_string);
+        let src_l = source.as_deref().unwrap_or_default().to_lowercase();
+        let kind = if tweet {
+            Kind::Social
+        } else if EXCHANGES.iter().any(|e| src_l.contains(e)) {
+            Kind::Exchange
+        } else {
+            Kind::News
+        };
+        let mut coins: Vec<String> = it
+            .get("suggestions")
+            .and_then(|x| x.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|x| x.get("coin").and_then(|c| c.as_str()).and_then(coin_symbol))
+            .collect();
+        coins.extend(
+            it.get("symbols")
+                .and_then(|x| x.as_array())
+                .into_iter()
+                .flatten()
+                .filter_map(|x| x.as_str().and_then(coin_symbol)),
+        );
+        let id = s(it, "_id").unwrap_or_default();
+        let link = link.unwrap_or_else(|| format!("https://news.treeofalpha.com/#{id}"));
+        let label = match kind {
+            Kind::Social => "X".to_string(),
+            _ => source.unwrap_or_else(|| "Tree News".into()),
+        };
+        let mut h = Headline::new(text, &label, link, ts, kind, &coins, universe);
+        h.author = author;
+        out.push(h);
+    }
+    Ok(out)
+}
+
+/// Bybit announcements (`result.list[]`: `title`, `url`, `type.key`, `publishTime`/`dateTimestamp` ms).
+pub fn parse_bybit(json: &str, universe: &HashSet<String>) -> Result<Vec<Headline>> {
+    let v: serde_json::Value = serde_json::from_str(json)?;
+    if v.get("retCode").and_then(|c| c.as_i64()).is_some_and(|c| c != 0) {
+        bail!("Bybit: {}", v.get("retMsg").and_then(|m| m.as_str()).unwrap_or("error"));
+    }
+    let list = v.pointer("/result/list").and_then(|l| l.as_array()).cloned().unwrap_or_default();
+    Ok(list
+        .iter()
+        .filter_map(|a| {
+            let title = clean(a.get("title")?.as_str()?);
+            let url = a.get("url")?.as_str()?.to_string();
+            let ts =
+                a.get("publishTime").and_then(ms_or_secs).or_else(|| a.get("dateTimestamp").and_then(ms_or_secs))?;
+            let mut h = Headline::new(title, "Bybit", url, ts, Kind::Exchange, &[], universe);
+            let key = a.pointer("/type/key").and_then(|k| k.as_str()).unwrap_or_default();
+            if (key.contains("new_crypto") || key.contains("delist")) && !h.tags.contains(&Tag::Listing) {
+                h.tags.push(Tag::Listing);
+                h.tags.sort();
+            }
+            Some(h)
+        })
+        .collect())
+}
+
+/// OKX announcements (`data[].details[]`: `title`, `url`, `annType`, `pTime` ms as a string).
+pub fn parse_okx(json: &str, universe: &HashSet<String>) -> Result<Vec<Headline>> {
+    let v: serde_json::Value = serde_json::from_str(json)?;
+    if v.get("code").and_then(|c| c.as_str()).is_some_and(|c| c != "0") {
+        bail!("OKX: {}", v.get("msg").and_then(|m| m.as_str()).unwrap_or("error"));
+    }
+    let mut out = Vec::new();
+    for page in v.get("data").and_then(|d| d.as_array()).into_iter().flatten() {
+        for a in page.get("details").and_then(|d| d.as_array()).into_iter().flatten() {
+            let (Some(title), Some(url), Some(ts)) = (
+                a.get("title").and_then(|t| t.as_str()),
+                a.get("url").and_then(|u| u.as_str()),
+                a.get("pTime").and_then(ms_or_secs),
+            ) else {
+                continue;
+            };
+            let mut h = Headline::new(clean(title), "OKX", url.to_string(), ts, Kind::Exchange, &[], universe);
+            let ann = a.get("annType").and_then(|t| t.as_str()).unwrap_or_default();
+            if (ann.contains("listing") || ann.contains("delisting")) && !h.tags.contains(&Tag::Listing) {
+                h.tags.push(Tag::Listing);
+                h.tags.sort();
+            }
+            out.push(h);
+        }
+    }
+    Ok(out)
+}
+
+/// Binance announcements (`data.catalogs[].articles[]`: `title`, `code`, `releaseDate` ms).
+pub fn parse_binance(json: &str, universe: &HashSet<String>) -> Result<Vec<Headline>> {
+    let v: serde_json::Value = serde_json::from_str(json)?;
+    let mut out = Vec::new();
+    for cat in v.pointer("/data/catalogs").and_then(|c| c.as_array()).into_iter().flatten() {
+        let listing = cat.get("catalogName").and_then(|n| n.as_str()).is_some_and(|n| n.contains("isting"));
+        for a in cat.get("articles").and_then(|a| a.as_array()).into_iter().flatten() {
+            let (Some(title), Some(code), Some(ts)) = (
+                a.get("title").and_then(|t| t.as_str()),
+                a.get("code").and_then(|c| c.as_str()),
+                a.get("releaseDate").and_then(ms_or_secs),
+            ) else {
+                continue;
+            };
+            let url = format!("https://www.binance.com/en/support/announcement/{code}");
+            let mut h = Headline::new(clean(title), "Binance", url, ts, Kind::Exchange, &[], universe);
+            if listing && !h.tags.contains(&Tag::Listing) {
+                h.tags.push(Tag::Listing);
+                h.tags.sort();
+            }
+            out.push(h);
+        }
+    }
+    Ok(out)
+}
+
+/// Fetch and parse one feed.
+pub async fn fetch_feed(http: &Http, feed: &Feed, universe: &HashSet<String>) -> Result<Vec<Headline>> {
+    let body = http.get(&feed.url, &[]).await?;
+    let mut items = match feed.format {
+        Format::Rss => headlines(&body, &feed.name, universe)?,
+        Format::TreeOfAlpha => parse_tree(&body, universe)?,
+        Format::Bybit => parse_bybit(&body, universe)?,
+        Format::Okx => parse_okx(&body, universe)?,
+        Format::Binance => parse_binance(&body, universe)?,
+    };
+    if feed.format == Format::Rss {
+        for h in &mut items {
+            h.kind = feed.kind();
+        }
+    }
+    Ok(items)
 }
 
 /// The merged wire, newest first, with per-feed status.
@@ -369,19 +670,6 @@ impl Wire {
         }
         added
     }
-}
-
-/// Fetch every feed concurrently.
-pub async fn fetch_all(
-    http: &Http,
-    feeds: &[Feed],
-    universe: &HashSet<String>,
-) -> Vec<(String, Result<Vec<Headline>, String>)> {
-    let futs = feeds.iter().map(|f| async move {
-        let r = http.get(&f.url, &[]).await.and_then(|x| headlines(&x, &f.name, universe));
-        (f.name.clone(), r.map_err(|e| format!("{e:#}")))
-    });
-    futures::future::join_all(futs).await
 }
 
 #[cfg(test)]
@@ -438,6 +726,8 @@ mod tests {
             ts,
             coins: vec![],
             tags: vec![],
+            kind: Kind::News,
+            author: None,
         };
         let mut w = Wire::default();
         assert_eq!(w.merge(vec![h("a", "1", 10), h("b", "2", 30)]), 2);
@@ -446,8 +736,73 @@ mod tests {
         assert_eq!(ts, [30, 25, 10]);
         let tmp = std::env::temp_dir().join(format!("hd-feeds-{}.json", std::process::id()));
         assert_eq!(load_feeds(&tmp).len(), DEFAULT_FEEDS.len());
-        std::fs::write(&tmp, r#"[{"name":"Mine","url":"https://x/rss"}]"#).unwrap();
-        assert_eq!(load_feeds(&tmp)[0].name, "Mine");
+        std::fs::write(
+            &tmp,
+            r#"[{"name":"Mine","url":"https://x/rss"},{"name":"T","url":"https://t","format":"tree_of_alpha"}]"#,
+        )
+        .unwrap();
+        let feeds = load_feeds(&tmp);
+        assert_eq!((feeds[0].name.as_str(), feeds[0].format, feeds[0].kind()), ("Mine", Format::Rss, Kind::News));
+        assert_eq!(feeds[1].format, Format::TreeOfAlpha);
         let _ = std::fs::remove_file(tmp);
+    }
+
+    #[test]
+    fn tree_of_alpha_tweets_and_announcements() {
+        let json = r#"[
+          {"title":"Watcher.Guru (@WatcherGuru)","body":"JUST IN: $BTC reclaims $70,000","icon":"https://pbs.twimg.com/x.jpg",
+           "link":"https://twitter.com/WatcherGuru/status/1","time":1792432800123,"_id":"a1",
+           "info":{"twitterId":"123","isReply":false},"suggestions":[{"coin":"BTC","found":["BTC"]}]},
+          {"title":"Binance Will List Foo (FOO) with Seed Tag Applied","source":"Binance EN","url":"https://www.binance.com/en/support/announcement/x",
+           "time":1792432700000,"symbols":["FOO_USDT","FOOUSDT"],"_id":"a2"},
+          {"title":"Ethereum devs schedule upgrade","source":"Blogs","url":"https://blog.example/eth","time":1792432600000,"_id":"a3","en":"Ethereum devs schedule upgrade"},
+          {"title":"no time"},
+          42
+        ]"#;
+        let h = parse_tree(json, &uni()).unwrap();
+        assert_eq!(h.len(), 3);
+        assert_eq!((h[0].kind, h[0].source.as_str(), h[0].ts), (Kind::Social, "X", 1_792_432_800));
+        assert_eq!(h[0].title, "JUST IN: $BTC reclaims $70,000");
+        assert_eq!(h[0].author.as_deref(), Some("Watcher.Guru (@WatcherGuru)"));
+        assert_eq!(h[0].coins, ["BTC"]);
+        assert!(h[0].tags.contains(&Tag::Breaking) && h[0].important());
+        assert_eq!((h[1].kind, h[1].coins.as_slice()), (Kind::Exchange, ["FOO".to_string()].as_slice()));
+        assert!(h[1].tags.contains(&Tag::Listing));
+        assert_eq!((h[2].kind, h[2].coins.as_slice()), (Kind::News, ["ETH".to_string()].as_slice()));
+        assert!(parse_tree("{}", &uni()).is_err());
+    }
+
+    #[test]
+    fn exchange_announcements() {
+        let bybit = r#"{"retCode":0,"retMsg":"OK","result":{"total":2,"list":[
+          {"title":"New Listing: FOOUSDT Perpetual Contract","description":"d","type":{"title":"New Listings","key":"new_crypto"},
+           "tags":["Derivatives"],"url":"https://announcements.bybit.com/a","dateTimestamp":1792432800000,"publishTime":1792432805000},
+          {"title":"Scheduled maintenance","type":{"key":"maintenance_updates"},"url":"https://announcements.bybit.com/b","dateTimestamp":1792430000000}]}}"#;
+        let b = parse_bybit(bybit, &uni()).unwrap();
+        assert_eq!((b.len(), b[0].ts, b[0].source.as_str()), (2, 1_792_432_805, "Bybit"));
+        assert!(b[0].tags.contains(&Tag::Listing) && !b[1].tags.contains(&Tag::Listing));
+        assert!(parse_bybit(r#"{"retCode":10001,"retMsg":"bad"}"#, &uni()).is_err());
+
+        let okx = r#"{"code":"0","msg":"","data":[{"details":[
+          {"annType":"announcements-new-listings","pTime":"1792432800000","title":"OKX to list SOL margin pairs","url":"https://www.okx.com/help/x"}],
+          "totalPage":"1"}]}"#;
+        let o = parse_okx(okx, &uni()).unwrap();
+        assert_eq!((o[0].ts, o[0].coins.as_slice()), (1_792_432_800, ["SOL".to_string()].as_slice()));
+        assert!(o[0].tags.contains(&Tag::Listing));
+
+        let binance = r#"{"code":"000000","data":{"catalogs":[{"catalogId":48,"catalogName":"New Cryptocurrency Listing",
+          "articles":[{"id":1,"code":"abc123","title":"Binance Will Add HYPE on Earn","releaseDate":1792432800000}]}]}}"#;
+        let n = parse_binance(binance, &uni()).unwrap();
+        assert_eq!(n[0].link, "https://www.binance.com/en/support/announcement/abc123");
+        assert_eq!((n[0].kind, n[0].coins.as_slice()), (Kind::Exchange, ["HYPE".to_string()].as_slice()));
+        assert!(n[0].tags.contains(&Tag::Listing));
+    }
+
+    #[test]
+    fn coin_symbols() {
+        assert_eq!(coin_symbol("btc_usdt").as_deref(), Some("BTC"));
+        assert_eq!(coin_symbol("SOLUSDT").as_deref(), Some("SOL"));
+        assert_eq!(coin_symbol("1000PEPE").as_deref(), Some("PEPE"));
+        assert_eq!(coin_symbol("A"), None);
     }
 }

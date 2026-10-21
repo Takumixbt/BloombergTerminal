@@ -382,6 +382,8 @@ pub(super) async fn handle(s: &Shared, req: FlowRequest) {
                 }
                 if let Some(c) = client {
                     tokio::spawn(run_wire(t, c.http().clone(), universe));
+                } else if offline {
+                    tokio::spawn(sample::run_wire(t));
                 }
             });
             send(FlowResponse::Wire(tape));
@@ -575,11 +577,22 @@ fn coin_universe(s: &Shared) -> std::collections::HashSet<String> {
     u
 }
 
-/// Poll every news feed into `wire` every 90 s until nobody else holds it.
+/// Poll each news feed into `wire` on its own cadence (real-time sources every 15–60 s,
+/// outlets every 90 s) until nobody else holds it.
 async fn run_wire(wire: SharedWire, http: hd_flow::Http, universe: std::collections::HashSet<String>) {
     let feeds = hd_flow::news::load_feeds(&super::data_dir().join("news_feeds.json"));
+    let mut due: Vec<std::time::Instant> = vec![std::time::Instant::now(); feeds.len()];
     while Arc::strong_count(&wire) > 1 {
-        let results = hd_flow::news::fetch_all(&http, &feeds, &universe).await;
+        let now = std::time::Instant::now();
+        let ready: Vec<usize> = (0..feeds.len()).filter(|&i| due[i] <= now).collect();
+        for &i in &ready {
+            due[i] = now + Duration::from_secs(feeds[i].format.interval_secs());
+        }
+        let results = futures::future::join_all(ready.iter().map(|&i| {
+            let (http, universe, f) = (&http, &universe, &feeds[i]);
+            async move { (f.name.clone(), hd_flow::news::fetch_feed(http, f, universe).await) }
+        }))
+        .await;
         if let Ok(mut w) = wire.lock() {
             for (name, r) in results {
                 match r {
@@ -589,11 +602,11 @@ async fn run_wire(wire: SharedWire, http: hd_flow::Http, universe: std::collecti
                         w.status.insert(name, Ok(n));
                     }
                     Err(e) => {
-                        w.status.insert(name, Err(e));
+                        w.status.insert(name, Err(format!("{e:#}")));
                     }
                 }
             }
         }
-        tokio::time::sleep(Duration::from_secs(90)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }

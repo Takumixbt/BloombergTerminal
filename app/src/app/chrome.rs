@@ -541,7 +541,7 @@ impl TerminalApp {
         let head = Rect::from_min_size(rect.min, vec2(rect.width(), self.toolbar_h()));
         window_drag_region(ui, head, "sidebar");
         if !cfg!(target_os = "macos") {
-            p.text(head.left_center() + vec2(14.0, 0.0), Align2::LEFT_CENTER, "TERMINAL-RS", mono(12.5), amber());
+            p.text(head.left_center() + vec2(14.0, 0.0), Align2::LEFT_CENTER, "HYPERDESK", mono(12.5), amber());
         }
 
         let body = Rect::from_min_max(pos2(rect.left(), head.bottom()), rect.max);
@@ -890,15 +890,19 @@ impl TerminalApp {
             let mut p = layer.clone();
             p.multiply_opacity(1.0 - leave);
             widgets::card_on(&p, r, 0.0);
-            // Order entry prefixes its toasts (`+` filled/ok, `!` rejected); everything else
-            // is a Congress alert.
+            // Order entry prefixes its toasts (`+` filled/ok, `!` rejected); the crypto panes
+            // prefix theirs with a [`ToastKind`]; everything else is a Congress alert.
             let (title, msg, color) = match msg.strip_prefix(super::trading::TOAST_PREFIX) {
                 Some(rest) => match rest.split_at_checked(1) {
                     Some(("+", m)) => ("Trading", m, theme::up()),
                     Some(("!", m)) => ("Trading · not done", m, theme::down()),
                     _ => ("Trading", rest, amber()),
                 },
-                None => ("Congress Alert", msg.as_str(), amber()),
+                None => ToastKind::parse(msg).map(|(k, m)| (k.title(), m, k.color())).unwrap_or((
+                    "Congress Alert",
+                    msg.as_str(),
+                    amber(),
+                )),
             };
             p.rect_filled(Rect::from_min_size(r.min + vec2(1.0, 6.0), vec2(3.0, r.height() - 12.0)), 1.5, color);
             widgets::draw_icon(
@@ -967,4 +971,49 @@ fn nav_row(ui: &mut Ui, icon: Icon, label: &str, trailing: Option<&str>, selecte
         }
     }
     resp
+}
+
+/// Toasts raised by the crypto panes, told apart by a prefix on the message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastKind {
+    News,
+    Alert,
+    Wallet,
+}
+
+impl ToastKind {
+    const ALL: [ToastKind; 3] = [ToastKind::News, ToastKind::Alert, ToastKind::Wallet];
+
+    fn prefix(self) -> &'static str {
+        match self {
+            ToastKind::News => "\u{1}news\u{1}",
+            ToastKind::Alert => "\u{1}alert\u{1}",
+            ToastKind::Wallet => "\u{1}wallet\u{1}",
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            ToastKind::News => "News",
+            ToastKind::Alert => "Crypto Alert",
+            ToastKind::Wallet => "Wallet",
+        }
+    }
+
+    fn color(self) -> egui::Color32 {
+        match self {
+            ToastKind::News => egui::Color32::from_rgb(255, 92, 92),
+            ToastKind::Alert => amber(),
+            ToastKind::Wallet => theme::accent(),
+        }
+    }
+
+    /// The message to push onto `toasts`.
+    pub fn msg(self, text: impl std::fmt::Display) -> String {
+        format!("{}{text}", self.prefix())
+    }
+
+    fn parse(msg: &str) -> Option<(ToastKind, &str)> {
+        Self::ALL.into_iter().find_map(|k| msg.strip_prefix(k.prefix()).map(|m| (k, m)))
+    }
 }

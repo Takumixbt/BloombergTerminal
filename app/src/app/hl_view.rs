@@ -147,7 +147,8 @@ impl TerminalApp {
         let any = |f: &dyn Fn(&PaneKind) -> bool| self.panes.iter().any(|p| f(&p.kind));
         let d = &mut self.hl;
         let send = |r| self.worker.send(Request::Flow(r));
-        if shown(&|k| matches!(k, PaneKind::Leaders(_)))
+        // An empty wallet pane suggests leaderboard wallets, so it needs the leaderboard too.
+        if shown(&|k| matches!(k, PaneKind::Leaders(_)) || matches!(k, PaneKind::Wallet(w) if w.address.is_none()))
             && d.leaders_at.is_none_or(|t| t.elapsed() > Duration::from_secs(300))
         {
             d.leaders_at = Some(Instant::now());
@@ -198,7 +199,7 @@ impl TerminalApp {
                     w.fills = fills;
                 }
                 for t in toasts {
-                    self.toasts.push((t, Instant::now()));
+                    self.toasts.push((super::chrome::ToastKind::Wallet.msg(t), Instant::now()));
                 }
             }
             FlowResponse::Leaders { leaders, vaults } => {
@@ -238,7 +239,8 @@ impl TerminalApp {
         let labels = &mut self.labels;
         match &mut self.panes[i].kind {
             PaneKind::Wallet(w) => {
-                let (actions, changed) = wallet(ui, w, labels);
+                let top = hl.leaders.as_ref().and_then(|r| r.as_ref().ok());
+                let (actions, changed) = wallet(ui, w, labels, top.map(|v| v.as_slice()));
                 if changed && let Err(e) = labels.save(&crate::worker::data_dir().join("wallet_labels.json")) {
                     tracing::warn!("saving wallet labels: {e:#}");
                 }
@@ -283,7 +285,7 @@ pub fn position_changes(old: &Account, new: &Account) -> Vec<String> {
 
 // ---- HLW: wallet ---------------------------------------------------------------------
 
-fn wallet(ui: &mut Ui, w: &mut WalletPane, labels: &mut Labels) -> (Vec<Action>, bool) {
+fn wallet(ui: &mut Ui, w: &mut WalletPane, labels: &mut Labels, top: Option<&[Leader]>) -> (Vec<Action>, bool) {
     let mut actions = Vec::new();
     let mut changed = false;
     ui.horizontal_wrapped(|ui| {
@@ -336,6 +338,25 @@ fn wallet(ui: &mut Ui, w: &mut WalletPane, labels: &mut Labels) -> (Vec<Action>,
             ui,
             "Paste any Hyperliquid address (or pick one in HLTOP, HLPOS or PRINTS) to see its positions, liquidation prices, PnL and fills. Positions are public on-chain data.",
         );
+        // Instead of a blank pane, offer the biggest accounts on the leaderboard.
+        if let Some(top) = top.filter(|t| !t.is_empty()) {
+            ui.add_space(dp(6.0));
+            title(ui, "TOP ACCOUNTS");
+            row(ui, &[200.0, 110.0, 110.0], &hdr(&["Trader", "Account", "PnL 30d"], 1), true);
+            let mut by_value: Vec<&Leader> = top.iter().collect();
+            by_value.sort_by(|a, b| b.account_value.total_cmp(&a.account_value));
+            for l in by_value.into_iter().take(12) {
+                let name = l.name.clone().unwrap_or_else(|| labels.display(&l.address));
+                let cells = [
+                    (name, amber(), false),
+                    (fmt_usd(l.account_value), text(), true),
+                    (signed_usd(l.month.pnl), signed(l.month.pnl), true),
+                ];
+                if row(ui, &[200.0, 110.0, 110.0], &cells, false).on_hover_text(&l.address).clicked() {
+                    w.open(&l.address);
+                }
+            }
+        }
         return (actions, changed);
     };
     let acct = match &w.account {
@@ -665,20 +686,31 @@ fn positioning(
         }
         Some(Ok(p)) => p.clone(),
     };
-    ui.horizontal_wrapped(|ui| {
+    ui.horizontal(|ui| {
         title(ui, "TOP-WALLET POSITIONING");
-        for c in pos.coins.iter().take(14) {
-            if ui
-                .selectable_label(c.coin.eq_ignore_ascii_case(&pp.coin), RichText::new(&c.coin).font(mono(11.5)))
-                .clicked()
-            {
-                pp.coin = c.coin.clone();
-            }
-        }
         if pos.simulated {
             simulated(ui, "data");
         }
     });
+    // One scrollable row of coins rather than a wrapped block that pushes the pane down.
+    egui::ScrollArea::horizontal()
+        .id_salt("hlpos-coins")
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                for c in pos.coins.iter().take(24) {
+                    if ui
+                        .selectable_label(
+                            c.coin.eq_ignore_ascii_case(&pp.coin),
+                            RichText::new(&c.coin).font(mono(11.5)),
+                        )
+                        .clicked()
+                    {
+                        pp.coin = c.coin.clone();
+                    }
+                }
+            });
+        });
     let when = chrono::DateTime::from_timestamp(pos.updated, 0)
         .map(|d| d.with_timezone(&chrono::Local).format("%H:%M").to_string())
         .unwrap_or_default();
@@ -1063,27 +1095,44 @@ fn option_flow(ui: &mut Ui, o: &mut OptionFlowPane, tape: Option<&SharedOptionFl
         );
         note(ui, format!("{} trades", prem.count));
     });
-    ui.horizontal_wrapped(|ui| {
-        note(ui, "Top strikes:");
-        for (k, c, p) in &strikes {
-            ui.label(RichText::new(format!("{k:.0}")).font(mono(11.5)).color(amber()));
-            ui.label(RichText::new(format!("C {} P {}", fmt_usd(*c), fmt_usd(*p))).font(mono(11.0)).color(muted()));
-        }
-    });
-    ui.horizontal_wrapped(|ui| {
-        note(ui, "By expiry:");
-        for (exp, p) in &expiries {
+    let strike_bars: Vec<(String, f64, f64)> = strikes
+        .iter()
+        .map(|(k, c, p)| {
+            (
+                if *k >= 10_000.0 && k % 1000.0 == 0.0 {
+                    format!("{:.0}K", k / 1000.0)
+                } else if *k >= 10_000.0 {
+                    format!("{:.1}K", k / 1000.0)
+                } else {
+                    format!("{k:.0}")
+                },
+                *c,
+                *p,
+            )
+        })
+        .collect();
+    let expiry_bars: Vec<(String, f64, f64)> = expiries
+        .iter()
+        .take(8)
+        .map(|(exp, p)| {
             let d = chrono::DateTime::from_timestamp(*exp, 0)
                 .map(|d| d.format("%d%b").to_string().to_uppercase())
                 .unwrap_or_default();
-            ui.label(RichText::new(d).font(mono(11.5)).color(amber()));
-            ui.label(
-                RichText::new(format!("C {} P {}", fmt_usd(p.calls()), fmt_usd(p.puts())))
-                    .font(mono(11.0))
-                    .color(muted()),
-            );
-        }
-    });
+            (d, p.calls(), p.puts())
+        })
+        .collect();
+    let strip = ui.available_rect_before_wrap();
+    let strip = Rect::from_min_size(strip.min, vec2(strip.width(), dp(70.0)));
+    let half = strip.width() / 2.0;
+    call_put_strip(ui, Rect::from_min_size(strip.min, vec2(half - 4.0, strip.height())), "Top strikes", &strike_bars);
+    call_put_strip(
+        ui,
+        Rect::from_min_max(pos2(strip.left() + half + 4.0, strip.top()), strip.max),
+        "By expiry",
+        &expiry_bars,
+    );
+    ui.advance_cursor_after_rect(strip);
+    ui.add_space(dp(4.0));
     let widths = [72.0, 46.0, 150.0, 56.0, 76.0, 90.0, 60.0, 60.0, 56.0];
     row(ui, &widths, &hdr(&["Time", "Ccy", "Contract", "Side", "Size", "Premium", "Price", "IV", "Block"], 4), true);
     egui::ScrollArea::vertical().id_salt("oflow").auto_shrink([false, false]).show_rows(
@@ -1123,6 +1172,36 @@ fn option_flow(ui: &mut Ui, o: &mut OptionFlowPane, tape: Option<&SharedOptionFl
     );
     ui.ctx().request_repaint_after(Duration::from_secs(1));
     actions
+}
+
+/// Premium by bucket as paired bars: calls (green) and puts (red), labelled underneath.
+fn call_put_strip(ui: &Ui, rect: Rect, title_text: &str, items: &[(String, f64, f64)]) {
+    let p = ui.painter_at(rect);
+    p.rect_filled(rect, 6.0, theme::header().gamma_multiply(0.6));
+    p.text(pos2(rect.left() + 6.0, rect.top() + 8.0), Align2::LEFT_CENTER, title_text, ui_font(10.5), muted());
+    if items.is_empty() {
+        p.text(rect.center(), Align2::CENTER_CENTER, "no trades yet", ui_font(10.5), muted());
+        return;
+    }
+    let max = items.iter().map(|x| x.1.max(x.2)).fold(0.0, f64::max).max(1e-9);
+    let plot =
+        Rect::from_min_max(pos2(rect.left() + 4.0, rect.top() + 16.0), pos2(rect.right() - 4.0, rect.bottom() - 14.0));
+    let w = plot.width() / items.len() as f32;
+    for (k, (label, c, put)) in items.iter().enumerate() {
+        let x = plot.left() + k as f32 * w;
+        let bw = ((w - 6.0) / 2.0).clamp(2.0, 14.0);
+        let cx = x + w / 2.0;
+        for (v, col, dx) in [(*c, theme::up(), -bw - 1.0), (*put, theme::down(), 1.0)] {
+            let h = (v / max) as f32 * plot.height();
+            p.rect_filled(
+                Rect::from_min_max(pos2(cx + dx, plot.bottom() - h.max(1.0)), pos2(cx + dx + bw, plot.bottom())),
+                1.0,
+                col.gamma_multiply(0.85),
+            );
+        }
+        let g = one_line(&p, label, mono(10.0), amber(), w - 2.0);
+        p.galley(pos2(cx - g.size().x / 2.0, rect.bottom() - 13.0), g, amber());
+    }
 }
 
 #[cfg(test)]
