@@ -82,7 +82,7 @@ design and layout as proprietary, so only that one-line feature list was used.
 | Gambit feature | Here | Status |
 |---|---|---|
 | Live charts, equities and crypto | Charts, `WEI`, `OMON` | Done |
-| News | `WIRE` news wire; `CALLS` KOL calls from X | Done (X needs your token or RSS bridges) |
+| News | `WIRE` real-time news terminal (tweets and exchange listings via Tree of Alpha, Binance, Bybit, OKX, plus outlets) with breaking banner and move-since-headline; `CALLS` KOL calls from X | Done (X calls need your token or RSS bridges) |
 | Options flow | `OFLOW`: Deribit BTC/ETH trades, blocks, premiums, put/call | Done for crypto; no free US equity flow source |
 | On-chain data | Hyperliquid wallets, positioning and prints | Done (Hyperliquid) |
 | Non-custodial Hyperliquid order ticket | — | Not done (below) |

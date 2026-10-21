@@ -128,13 +128,24 @@ chains (`OMON`) show volume and open interest per contract instead.
 | HLP vault | the vault list above | |
 | Daily fees and revenue | `GET api.llama.fi/summary/fees/hyperliquid?dataType=dailyFees` / `dailyRevenue` | DefiLlama's free API |
 
-## News wire (`WIRE`) — Gambit-style
+## News terminal (`WIRE`) — Gambit-style
 
-RSS and Atom feeds, polled every 90 s while a wire pane is open, merged and de-duplicated:
-CoinDesk, Cointelegraph, The Block, Decrypt, Blockworks, Bitcoin Magazine, CryptoSlate,
-Hyperliquid's Medium, the Federal Reserve press releases and SEC press releases. Coins are tagged
-from `$CASHTAGS`, tickers known to the derivatives board and common coin names; story tags come
-from keyword lists. Replace the list with your own in `news_feeds.json` in the data folder.
+| Source | Endpoint | Polled | Notes |
+|---|---|---|---|
+| Tweets and announcements | `GET news.treeofalpha.com/api/news?limit=100` | every 15 s | Tree of Alpha's public news feed: posts from market-moving X accounts and exchange announcements, with the coins it detected. Community-run and unofficial, so it may change or add limits |
+| Binance announcements | `GET www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1` | every 60 s | The list Binance's website uses (not a documented API) |
+| Bybit announcements | `GET api.bybit.com/v5/announcements/index?locale=en-US` | every 60 s | Bybit's documented public API |
+| OKX announcements | `GET www.okx.com/api/v5/support/announcements` | every 60 s | OKX's documented public API |
+| Outlets and regulators | RSS/Atom: CoinDesk, Cointelegraph, The Block, Decrypt, Blockworks, Bitcoin Magazine, CryptoSlate, Hyperliquid's Medium, Federal Reserve, SEC | every 90 s | |
+
+Headlines are merged and de-duplicated. Coins come from the source's own coin detection, from
+`$CASHTAGS`, tickers known to the derivatives board and common coin names; story tags (BREAKING,
+LIST, HACK, REG, ETF, MACRO, HL, RAISE) come from keyword lists and the exchanges' announcement
+categories. The **move since the headline** compares the board price when Hyperdesk first saw a
+headline (only for headlines under 15 minutes old) with the current board price, which refreshes
+about every 30 s; it is not tick-accurate. Replace the source list with your own in
+`news_feeds.json` in the data folder. Check every source from your network with
+`cargo test -p hd-flow --test live news -- --ignored --nocapture`.
 
 ## KOL calls (`CALLS`)
 

@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/img/demo.gif" alt="Hyperdesk demo: the Crypto Desk with a live order book heatmap, footprint and liquidations, then the Market Desk, the Hyperliquid Desk and a whale's wallet" width="100%">
+  <img src="docs/img/demo.gif" alt="Hyperdesk demo: the Crypto Desk with a live order book heatmap, footprint, liquidations and the news terminal, then the chart's drawing tools, the Market Desk and the Hyperliquid Desk" width="100%">
 </p>
 
 <p align="center"><sub>Offline demo data (<code>HD_PROVIDER=sample</code>). Everything you see runs live against public exchange APIs.</sub></p>
@@ -41,16 +41,17 @@ and link by colour, so one coin change drives the chart, heatmap and footprint t
 | | `HLPOS BTC` | **Top-wallet positioning**: long vs short among the 200 largest accounts, size cohorts (Shrimp → Kraken), a **liquidation map** from their real liquidation prices, largest positions |
 | | `PRINTS` | **Whale prints**: $25K+ Hyperliquid trades with the taker's and maker's wallets |
 | | `HLECO` | **Ecosystem**: perp OI and volume, HYPE, **HIP-3 builder DEXs** and their markets, spot tokens by market cap, the HLP vault, daily **fees and revenue** |
-| **News & social** | `WIRE` · `WIRE SOL` | **News wire** from CoinDesk, The Block, Cointelegraph, Decrypt, Blockworks, the Fed, the SEC and more: coin chips, story tags (HACK, REG, ETF, LIST, MACRO, HL, RAISE), important stories highlighted |
+| **News & social** | `WIRE` · `WIRE SOL` | **News terminal**: a real-time tape of tweets and exchange listing notices (Tree of Alpha's public feed, Binance, Bybit, OKX) plus CoinDesk, The Block, Cointelegraph, Decrypt, Blockworks, the Fed, the SEC and more. Breaking-news banner, X / EXCH / NEWS / GOV badges, story tags (BREAKING, LIST, HACK, REG, ETF, MACRO, HL, RAISE), coin chips showing **the move since the headline**, flashes and toasts for important stories |
 | | `CALLS` | **KOL calls** from X accounts you follow: coin, side and levels from each post, price at the call, move since, and a hit-rate **scorecard** |
 | | `PRED` | **Prediction markets** (Polymarket): odds, history per outcome, order book |
-| **Charts & TradFi** | `AAPL` · `BTCUSD CRNCY` · `US10Y GOVT` | GPU candles with 151 indicators, drawings and compare; stocks, ETFs, indices, FX, crypto, Treasuries, futures |
+| **Charts & TradFi** | `AAPL` · `BTCUSD CRNCY` · `US10Y GOVT` | GPU candles with 151 indicators, a TradingView-style drawing toolbar (trendline, horizontal/vertical line, Fib, magnet), OHLC legend and compare; stocks, ETFs, indices, FX, crypto, Treasuries, futures |
 | | `OMON` · `WEI` · `GC` · `CN` | Option chains with greeks, world markets, the Treasury curve, headlines |
 | | `CONG` · `POL PELOSI` | US Congress trades from the official STOCK Act filings, with chart markers and alerts |
 | **Trading** | `PORT` · `BUY AAPL 10` | A paper-trading demo account by default; real brokerage accounts through SnapTrade (read-only until you turn trading on) |
 
-Three ready-made layouts are created on first launch: **Crypto Desk**, **Hyperliquid Desk** and
-**Market Desk** (`LAYOUT Crypto Desk`, or <kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>9</kbd>).
+Hyperdesk opens on the **Crypto Desk**; the **Hyperliquid Desk**, **Market Desk** and a classic
+equities **Default** desk are one click away in the sidebar (`LAYOUT Market Desk`, or
+<kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>9</kbd>).
 
 <table>
   <tr>
@@ -58,16 +59,16 @@ Three ready-made layouts are created on first launch: **Crypto Desk**, **Hyperli
     <td><img src="docs/img/hyperliquid-desk.png" alt="Hyperliquid Desk"></td>
   </tr>
   <tr>
-    <td align="center"><b>Crypto Desk</b>: chart, heatmap, derivatives board, footprint, liquidations, predictions</td>
+    <td align="center"><b>Crypto Desk</b>: chart, heatmap, derivatives board, footprint, liquidations, news terminal</td>
     <td align="center"><b>Hyperliquid Desk</b>: leaderboard, wallet, whale prints, positioning, options flow</td>
   </tr>
   <tr>
     <td><img src="docs/img/market-desk.png" alt="Market Desk"></td>
-    <td><img src="docs/img/crypto-detail.png" alt="Coin detail and prediction market"></td>
+    <td><img src="docs/img/chart.png" alt="BTCUSD chart with drawing tools"></td>
   </tr>
   <tr>
-    <td align="center"><b>Market Desk</b>: returns heatmap, news wire, KOL calls, ecosystem, seasonality, alerts</td>
-    <td align="center"><b>DERIV BTC</b> and a Polymarket market</td>
+    <td align="center"><b>Market Desk</b>: returns heatmap, prediction markets, KOL calls, ecosystem, seasonality, alerts</td>
+    <td align="center"><b>Charts</b>: drawing toolbar, OHLC legend, trendline and Fib on BTCUSD 1H</td>
   </tr>
 </table>
 
@@ -97,7 +98,7 @@ Nothing below is required; every pane works without it.
 | To get | Do this |
 |---|---|
 | **KOL calls from X** | X has no free read API. Either set `X_BEARER_TOKEN` (a paid X API tier) before starting Hyperdesk, or give each account an RSS bridge URL (RSSHub, Nitter, rss.app) when you add it in the `CALLS` pane. Calls are kept in `kol_calls.json` so their scorecard survives restarts. |
-| **Your own news feeds** | Put `[{"name": "My feed", "url": "https://…/rss"}]` in `news_feeds.json` in the data folder (RSS or Atom). It replaces the default list. |
+| **Your own news feeds** | Put `[{"name": "My feed", "url": "https://…/rss"}]` in `news_feeds.json` in the data folder (RSS or Atom; `"format"` can also be `tree_of_alpha`, `binance`, `bybit` or `okx`, and `"kind"` `Social`, `Exchange`, `News` or `Official`). It replaces the default list. |
 | **Wallet labels** | Click **✎ Label** in any `HLW` wallet. Labels are saved in `wallet_labels.json`; vault names and leaderboard names are added automatically. |
 | **Stocks from Alpaca** | `APCA_API_KEY_ID` and `APCA_API_SECRET_KEY` (free tier). |
 | **Brokerage accounts** | **Settings › Brokerage**: SnapTrade client ID and consumer key, **Register User**, **Connect Brokerage…**. Secrets go to the Windows Credential Manager or macOS Keychain. Live order entry stays off until you enable it in **Settings › Trading**, and every order is previewed and confirmed. |

@@ -337,8 +337,13 @@ impl LayoutDoc {
     pub fn crypto_workspace(defaults: &crate::prefs::PanelDefaults) -> LayoutDoc {
         let flow =
             |view| PaneSettings::Flow { coin: "BTC".into(), venue: hd_flow::Exchange::Binance, view, tf_secs: 60 };
+        // Crypto traders live on intraday candles; the hourly chart also shows the live candle move.
+        let mut chart = chart_settings("BTCUSD Curncy", defaults);
+        if let PaneSettings::Chart { tf, .. } = &mut chart {
+            *tf = hd_core::Timeframe::H1;
+        }
         let panes = vec![
-            chart_settings("BTCUSD Curncy", defaults),
+            chart,
             flow(crate::app::FlowView::Heatmap),
             PaneSettings::Deriv { coin: None, apr: false },
             flow(crate::app::FlowView::Footprint),

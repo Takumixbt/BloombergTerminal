@@ -23,6 +23,8 @@ use crate::widgets;
 use crate::worker::{BuiltIndicator, PaneId, Request, Worker, initial_limit};
 
 const AXIS_W: f32 = 66.0;
+/// Width of the drawing toolbar on the left of roomy chart panes.
+const TOOLS_W: f32 = 32.0;
 const TIME_H: f32 = 16.0;
 /// Fallback header row, used when the pane's tab strip has no room for the controls.
 const HEADER_H: f32 = 24.0;
@@ -636,6 +638,12 @@ impl ChartState {
         }
 
         let body = Rect::from_min_max(pos2(rect.left(), header.bottom()), pos2(rect.right(), range_row.top()));
+        // TradingView-style drawing toolbar down the left edge when the pane has room.
+        let tools_w = if rect.width() > 520.0 && body.height() > 220.0 { TOOLS_W } else { 0.0 };
+        if tools_w > 0.0 {
+            clicked |= self.draw_toolbar(ui, Rect::from_min_max(body.min, pos2(body.left() + tools_w, body.bottom())));
+        }
+        let body = Rect::from_min_max(pos2(body.left() + tools_w, body.top()), body.max);
         let plot_all = Rect::from_min_max(body.min, pos2(body.right() - AXIS_W, body.bottom() - TIME_H));
         if plot_all.width() < 40.0 || plot_all.height() < 40.0 {
             return clicked;
@@ -895,7 +903,10 @@ impl ChartState {
             for (j, label) in scale::time_ticks(&times, 0, times.len(), gap, self.tf) {
                 let x = price_rect.left() + v.x_center(idxs[j]) as f32;
                 ui.painter_at(plot_all).vline(x, plot_all.y_range(), Stroke::new(1.0, theme::grid()));
-                time_painter.text(pos2(x, time_rect.center().y), Align2::CENTER_CENTER, label, mono(10.5), muted());
+                // Skip labels that would be cut by the plot's left edge.
+                if x - label.len() as f32 * 3.4 >= time_rect.left() {
+                    time_painter.text(pos2(x, time_rect.center().y), Align2::CENTER_CENTER, label, mono(10.5), muted());
+                }
             }
         }
 
@@ -1092,6 +1103,129 @@ impl ChartState {
         }
     }
 
+    /// The drawing toolbar: cursor, trendline, horizontal/vertical line, Fibonacci, magnet and
+    /// clear-all, one click each (the same tools as the Draw menu and Alt shortcuts).
+    fn draw_toolbar(&mut self, ui: &Ui, strip: Rect) -> bool {
+        #[derive(Clone, Copy, PartialEq)]
+        enum Btn {
+            Cursor,
+            Draw(Tool),
+            Magnet,
+            Clear,
+        }
+        let alt = if cfg!(target_os = "macos") { "⌥" } else { "Alt+" };
+        let buttons = [
+            (Btn::Cursor, "Cursor (Esc)".to_string()),
+            (Btn::Draw(Tool::Trendline), format!("Trendline ({alt}T)")),
+            (Btn::Draw(Tool::Horizontal), format!("Horizontal line ({alt}H)")),
+            (Btn::Draw(Tool::Vertical), format!("Vertical line ({alt}V)")),
+            (Btn::Draw(Tool::Fib), format!("Fib retracement ({alt}F)")),
+            (Btn::Magnet, "Magnet: snap drawings to OHLC".to_string()),
+            (Btn::Clear, "Remove all drawings".to_string()),
+        ];
+        let p = ui.painter_at(strip);
+        p.vline(strip.right() - 0.5, strip.y_range(), Stroke::new(1.0, theme::border()));
+        let mut clicked = false;
+        let mut y = strip.top() + 6.0;
+        for (k, (b, tip)) in buttons.iter().enumerate() {
+            if k == 5 {
+                // Separator before the toggles.
+                p.hline((strip.left() + 8.0)..=(strip.right() - 8.0), y + 1.0, Stroke::new(1.0, theme::border()));
+                y += 6.0;
+            }
+            let r = Rect::from_min_size(pos2(strip.left() + 3.0, y), vec2(strip.width() - 7.0, 26.0));
+            y += 30.0;
+            if r.bottom() > strip.bottom() {
+                break;
+            }
+            let resp = ui.interact(r, ui.id().with((self.id, "draw-tool", k)), Sense::click()).on_hover_text(tip);
+            let active = match b {
+                Btn::Cursor => self.draw.tool.is_none(),
+                Btn::Draw(t) => self.draw.tool == Some(*t),
+                Btn::Magnet => self.magnet,
+                Btn::Clear => false,
+            };
+            if active || resp.hovered() {
+                p.rect_filled(r, 4.0, if active { amber().gamma_multiply(0.18) } else { theme::header() });
+            }
+            let c = if active {
+                amber()
+            } else if resp.hovered() {
+                text()
+            } else {
+                muted()
+            };
+            let st = Stroke::new(1.4, c);
+            let (cx, cy) = (r.center().x, r.center().y);
+            match b {
+                Btn::Cursor => {
+                    p.hline((cx - 8.0)..=(cx - 2.5), cy, st);
+                    p.hline((cx + 2.5)..=(cx + 8.0), cy, st);
+                    p.vline(cx, (cy - 8.0)..=(cy - 2.5), st);
+                    p.vline(cx, (cy + 2.5)..=(cy + 8.0), st);
+                }
+                Btn::Draw(Tool::Trendline) => {
+                    p.line_segment([pos2(cx - 7.0, cy + 6.0), pos2(cx + 7.0, cy - 6.0)], st);
+                    p.circle_stroke(pos2(cx - 7.0, cy + 6.0), 2.0, st);
+                    p.circle_stroke(pos2(cx + 7.0, cy - 6.0), 2.0, st);
+                }
+                Btn::Draw(Tool::Horizontal) => {
+                    p.hline((cx - 9.0)..=(cx + 9.0), cy, st);
+                    p.circle_filled(pos2(cx, cy), 2.5, c);
+                }
+                Btn::Draw(Tool::Vertical) => {
+                    p.vline(cx, (cy - 9.0)..=(cy + 9.0), st);
+                    p.circle_filled(pos2(cx, cy), 2.5, c);
+                }
+                Btn::Draw(Tool::Fib) => {
+                    for (dy, w) in [(-7.0, 9.0), (-2.0, 6.0), (2.5, 6.0), (7.0, 9.0)] {
+                        p.hline((cx - w)..=(cx + w), cy + dy, st);
+                    }
+                }
+                Btn::Magnet => {
+                    let pts: Vec<Pos2> = (0..=12)
+                        .map(|i| {
+                            let a = std::f32::consts::PI * i as f32 / 12.0;
+                            pos2(cx - 6.0 * a.cos(), cy + 1.0 + 6.0 * a.sin())
+                        })
+                        .collect();
+                    p.add(egui::Shape::line(pts, Stroke::new(2.4, c)));
+                    p.vline(cx - 6.0, (cy - 7.0)..=(cy + 1.0), Stroke::new(2.4, c));
+                    p.vline(cx + 6.0, (cy - 7.0)..=(cy + 1.0), Stroke::new(2.4, c));
+                }
+                Btn::Clear => {
+                    p.hline((cx - 7.0)..=(cx + 7.0), cy - 5.0, st);
+                    p.hline((cx - 2.5)..=(cx + 2.5), cy - 7.5, st);
+                    p.rect_stroke(
+                        Rect::from_min_max(pos2(cx - 5.0, cy - 4.0), pos2(cx + 5.0, cy + 8.0)),
+                        1.5,
+                        st,
+                        egui::StrokeKind::Inside,
+                    );
+                }
+            }
+            if resp.clicked() {
+                clicked = true;
+                match b {
+                    Btn::Cursor => self.draw = DrawState::default(),
+                    Btn::Draw(t) => {
+                        if self.draw.tool == Some(*t) {
+                            self.draw = DrawState::default();
+                        } else {
+                            self.start_tool(*t);
+                        }
+                    }
+                    Btn::Magnet => self.magnet = !self.magnet,
+                    Btn::Clear => {
+                        self.drawings.clear();
+                        self.draw = DrawState::default();
+                    }
+                }
+            }
+        }
+        clicked
+    }
+
     fn paint_legend(&self, ui: &Ui, price_rect: Rect, i: usize, sub_rects: &[(Rect, usize, PriceScale)]) {
         let Some(b) = self.bars.get(i) else { return };
         let p = ui.painter_at(price_rect);
@@ -1102,7 +1236,9 @@ impl ChartState {
         // TradingView-style legend: muted field names, values in the bar's colour, wrapping onto a
         // second line instead of running under the price axis in narrow panes.
         let left = price_rect.left() + 6.0;
-        let right = price_rect.right() - 6.0;
+        // Stay clear of the Buy / Sell buttons in the top-right corner of tradable charts.
+        let trade = matches!(self.sec.class, hd_core::AssetClass::Equity | hd_core::AssetClass::Etf);
+        let right = price_rect.right() - if trade { 120.0 } else { 6.0 };
         let mut x = left;
         let mut y = price_rect.top() + 4.0;
         let put = |parts: &[(String, Color32)], x: &mut f32, y: &mut f32| {
