@@ -12,13 +12,41 @@ fn dump_ppm(path: &str, w: u32, h: u32, rgba: &[u8]) {
     std::fs::write(path, out).unwrap();
 }
 
+/// One GPU device at a time: software adapters (WARP on the Windows CI runner) crash with an access
+/// violation when the test harness creates several devices in parallel.
+static GPU: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// A headless renderer that holds the GPU lock until after its device is dropped.
+struct Gpu {
+    h: Headless,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+impl std::ops::Deref for Gpu {
+    type Target = Headless;
+    fn deref(&self) -> &Headless {
+        &self.h
+    }
+}
+
+impl std::ops::DerefMut for Gpu {
+    fn deref_mut(&mut self) -> &mut Headless {
+        &mut self.h
+    }
+}
+
+fn headless(width: u32, height: u32) -> Option<Gpu> {
+    let lock = GPU.lock().unwrap_or_else(|e| e.into_inner());
+    Headless::new(width, height).map(|h| Gpu { h, _lock: lock })
+}
+
 fn count(px: &[u8], pred: impl Fn(&[u8]) -> bool) -> usize {
     px.as_chunks::<4>().0.iter().filter(|p| pred(p.as_slice())).count()
 }
 
 #[test]
 fn renders_candles_volume_lines_and_hist() {
-    let Some(mut h) = Headless::new(800, 400) else {
+    let Some(mut h) = headless(800, 400) else {
         eprintln!("no wgpu adapter; skipping");
         return;
     };
@@ -76,7 +104,7 @@ fn renders_candles_volume_lines_and_hist() {
 
 #[test]
 fn reveal_sweeps_in_from_the_left_and_fades() {
-    let Some(mut h) = Headless::new(800, 400) else {
+    let Some(mut h) = headless(800, 400) else {
         eprintln!("no wgpu adapter; skipping");
         return;
     };
@@ -141,7 +169,7 @@ fn reveal_sweeps_in_from_the_left_and_fades() {
 
 #[test]
 fn steps_draw_short_sessions_without_joining_them() {
-    let Some(mut h) = Headless::new(800, 400) else {
+    let Some(mut h) = headless(800, 400) else {
         eprintln!("no wgpu adapter; skipping");
         return;
     };
@@ -175,7 +203,7 @@ fn steps_draw_short_sessions_without_joining_them() {
 
 #[test]
 fn zoomed_out_steps_stay_inside_their_group() {
-    let Some(mut h) = Headless::new(800, 400) else {
+    let Some(mut h) = headless(800, 400) else {
         eprintln!("no wgpu adapter; skipping");
         return;
     };
